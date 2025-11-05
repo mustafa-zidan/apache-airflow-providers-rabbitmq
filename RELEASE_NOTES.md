@@ -1,5 +1,17 @@
 # Apache Airflow Provider for RabbitMQ - Release Notes
 
+## Version 1.1.0 (2025-11-05)
+
+### Changes since 1.0.0
+
+- chore: update uv.lock
+
+### Notes
+
+- No functional code changes; dependency lockfile updated.
+
+----
+
 ## Version 0.1.0 (Initial Release)
 
 We're excited to announce the initial release of the Apache Airflow Provider for RabbitMQ! This provider package enables seamless integration between Apache Airflow and RabbitMQ messaging system.
