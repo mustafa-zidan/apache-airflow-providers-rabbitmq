@@ -4,7 +4,7 @@ from typing import Generator, Optional
 import aio_pika
 import pika
 from aio_pika.abc import AbstractChannel, AbstractRobustConnection
-from airflow.hooks.base import BaseHook
+from airflow.sdk.bases.hook import BaseHook
 from pika.adapters.blocking_connection import BlockingConnection
 from pika.channel import Channel
 

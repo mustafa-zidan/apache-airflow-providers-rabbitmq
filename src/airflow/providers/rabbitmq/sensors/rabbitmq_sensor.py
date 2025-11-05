@@ -1,7 +1,7 @@
 from typing import Any, Optional, Sequence
 
-from airflow.sensors.base import BaseSensorOperator, PokeReturnValue
-from airflow.utils.context import Context
+from airflow.sdk.bases.sensor import BaseSensorOperator, PokeReturnValue
+from airflow.sdk.definitions.context import Context
 from pika.adapters.blocking_connection import BlockingChannel
 from pika.frame import Method
 

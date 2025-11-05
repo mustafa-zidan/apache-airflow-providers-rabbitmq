@@ -1,16 +1,31 @@
 # Apache Airflow Provider for RabbitMQ - Release Notes
 
-## Version 1.1.0 (2025-11-05)
+## Version 2.0.0 (2025-11-05)
 
-### Changes since 1.0.0
+This is a major release that adds compatibility with Apache Airflow 3.x and drops support for 2.x.
 
-- chore: update uv.lock
+### Breaking changes
+- Requires Apache Airflow >= 3.0.0
+- Import paths updated to the new Airflow 3 SDK layout:
+  - BaseHook: `airflow.hooks.base.BaseHook` → `airflow.sdk.bases.hook.BaseHook`
+  - BaseSensorOperator/PokeReturnValue: `airflow.sensors.base` → `airflow.sdk.bases.sensor`
+  - Context: `airflow.utils.context.Context` → `airflow.sdk.definitions.context.Context`
 
-### Notes
+### Enhancements
+- Align provider with Airflow 3 SDK modules and typing.
 
-- No functional code changes; dependency lockfile updated.
+### Maintenance
+- Bump provider version to `2.0`
+- Update dependency constraint in `pyproject.toml` to `apache-airflow>=3.0.0`
+- Refresh dependency lockfile (`uv.lock`)
 
-----
+### Migration guide
+- Update any direct imports in your DAGs/custom code:
+  - `from airflow.hooks.base import BaseHook` → `from airflow.sdk.bases.hook import BaseHook`
+  - `from airflow.sensors.base import BaseSensorOperator, PokeReturnValue` → `from airflow.sdk.bases.sensor import BaseSensorOperator, PokeReturnValue`
+  - `from airflow.utils.context import Context` → `from airflow.sdk.definitions.context import Context`
+- Ensure your environment is running Apache Airflow 3.x before upgrading this provider.
+
 
 ## Version 1.0.0 (Initial Release)
 

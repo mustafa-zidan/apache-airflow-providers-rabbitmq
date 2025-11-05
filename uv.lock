@@ -189,7 +189,7 @@ wheels = [
 
 [[package]]
 name = "apache-airflow-provider-rabbitmq"
-version = "1.1.0"
+version = "2.0.0"
 source = { editable = "." }
 dependencies = [
     { name = "aio-pika" },
@@ -213,7 +213,7 @@ development = [
 [package.metadata]
 requires-dist = [
     { name = "aio-pika", specifier = ">=9.5.0,<10.0.0" },
-    { name = "apache-airflow", specifier = ">=2.0.0" },
+    { name = "apache-airflow", specifier = ">=3.0.0" },
     { name = "black", marker = "extra == 'development'", specifier = ">=23.0.0,<24.0.0" },
     { name = "flake8", marker = "extra == 'development'", specifier = ">=7.2.0,<8.0.0" },
     { name = "isort", marker = "extra == 'development'", specifier = ">=5.0.0,<6.0.0" },
