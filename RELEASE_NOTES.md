@@ -12,10 +12,10 @@ This is a major release that adds compatibility with Apache Airflow 3.x and drop
   - Context: `airflow.utils.context.Context` → `airflow.sdk.definitions.context.Context`
 
 ### Enhancements
-- Align provider with Airflow 3 SDK modules and typing.
+- Align the provider with Airflow 3 SDK modules and typing.
 
 ### Maintenance
-- Bump provider version to `2.0`
+- Bump provider version to `2.0.0`
 - Update dependency constraint in `pyproject.toml` to `apache-airflow>=3.0.0`
 - Refresh dependency lockfile (`uv.lock`)
 
