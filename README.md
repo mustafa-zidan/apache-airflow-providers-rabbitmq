@@ -1,6 +1,6 @@
 # Apache Airflow Provider for RabbitMQ
 
-[![PyPI version](https://badge.fury.io/py/apache-airflow-provider-rabbitmq.svg)](https://badge.fury.io/py/apache-airflow-provider-rabbitmq)
+[![PyPI version](https://badge.fury.io/py/apache-airflow-provider-rabbitmq.svg?icon=si%3Apython)](https://badge.fury.io/py/apache-airflow-provider-rabbitmq)
 [![License](https://img.shields.io/github/license/mustafa-zidan/apache-airflow-providers-rabbitmq)](LICENSE)
 
 ## Overview
@@ -11,9 +11,9 @@ The **Apache Airflow Provider for RabbitMQ** enables seamless integration with R
 
 ## Features
 
-- Publish messages to RabbitMQ queues.
-- Consume messages from RabbitMQ queues.
-- Full support for RabbitMQ connection management in Airflow.
+- Publish messages to RabbitMQ exchanges/queues.
+- Wait for messages in a queue using an Airflow Sensor.
+- RabbitMQ connection management via Airflow Connections (URI or host/login/password/port/schema).
 
 ---
 
@@ -25,7 +25,7 @@ To install the provider, use `pip`:
 pip install apache-airflow-provider-rabbitmq
 ```
 
-> **Note**: This provider requires Apache Airflow 2.0 or later.
+> Note: Requires Python 3.12+ and Apache Airflow 3.0 or later.
 
 ---
 
@@ -37,11 +37,13 @@ pip install apache-airflow-provider-rabbitmq
 2. Click on **Create** to add a new connection.
 3. Configure the following fields:
     - **Conn Id**: `rabbitmq_default` (or a custom ID)
-    - **Conn Type**: `RabbitMQ`
+    - **Conn Type**: `RabbitMQ` (conn type key: `rabbitmq`)
     - **Host**: `<RabbitMQ server hostname or IP>`
     - **Login**: `<RabbitMQ username>`
     - **Password**: `<RabbitMQ password>`
     - **Port**: `5672` (default RabbitMQ port)
+    - **Schema**: `<vhost>` (optional; maps to RabbitMQ virtual host)
+    - **Extras (JSON)**: Optionally provide `{ "connection_uri": "amqp://user:pass@host:5672/vhost" }` to override the URI.
 
 You can now reference this connection in your DAGs using the connection ID.
 
@@ -49,47 +51,50 @@ You can now reference this connection in your DAGs using the connection ID.
 
 ## Usage
 
-### Example DAG: Publish and Consume Messages
-
-Here’s an example DAG demonstrating how to use the RabbitMQ operator:
+### Example: Publish a message (Operator)
 
 ```python
 from airflow import DAG
 from datetime import datetime
-from airflow.providers.rabbitmq.operators.rabbitmq import RabbitMQOperator
-
-def process_message(message):
-    print(f"Received message: {message}")
+from airflow.providers.rabbitmq.operators.rabbitmq_producer import RabbitMQProducerOperator
 
 with DAG(
-    dag_id="example_rabbitmq_dag",
-    default_args={"start_date": datetime(2023, 1, 1)},
-    schedule_interval=None,
+    dag_id="example_rabbitmq_producer",
+    start_date=datetime(2024, 1, 1),
+    schedule=None,
     catchup=False,
-) as dag:
-
-    publish_task = RabbitMQOperator(
+):
+    publish_message = RabbitMQProducerOperator(
         task_id="publish_message",
-        rabbitmq_conn_id="rabbitmq_default",
-        queue="example_queue",
         message="Hello, RabbitMQ!",
-        mode="publish",
+        exchange="amq.direct",
+        routing_key="example",
+        conn_id="rabbitmq_default",
+        # use_async=True,
     )
-
-    consume_task = RabbitMQOperator(
-        task_id="consume_message",
-        rabbitmq_conn_id="rabbitmq_default",
-        queue="example_queue",
-        mode="consume",
-        callback=process_message,
-    )
-
-    publish_task >> consume_task
 ```
 
-### Key Features
-- **`publish` mode**: Sends messages to a RabbitMQ queue.
-- **`consume` mode**: Consumes messages from a RabbitMQ queue and processes them using a callback.
+### Example: Wait for a message (Sensor)
+
+```python
+from airflow import DAG
+from datetime import datetime
+from airflow.providers.rabbitmq.sensors.rabbitmq_sensor import RabbitMQSensor
+
+with DAG(
+    dag_id="example_rabbitmq_sensor",
+    start_date=datetime(2024, 1, 1),
+    schedule=None,
+    catchup=False,
+):
+    wait_for_message = RabbitMQSensor(
+        task_id="wait_for_message",
+        queue="example_queue",
+        conn_id="rabbitmq_default",
+        poke_interval=30,
+        timeout=10 * 60,
+    )
+```
 
 ---
 
@@ -98,15 +103,15 @@ with DAG(
 ### Prerequisites
 
 - Python 3.12 or later
-- Apache Airflow 2.3 or later
+- Apache Airflow 3.0 or later
 - RabbitMQ server (local or remote)
 
 ### Setting Up for Development
 
 1. Clone the repository:
    ```bash
-   git clone https://github.com/mustafazidan/apache-airflow-provider-rabbitmq.git
-   cd apache-airflow-provider-rabbitmq
+   git clone https://github.com/mustafa-zidan/apache-airflow-providers-rabbitmq.git
+   cd apache-airflow-providers-rabbitmq
    ```
 
 2. Install the library in editable mode:
@@ -198,4 +203,4 @@ This project is licensed under the [Apache License 2.0](LICENSE).
 
 ## Support
 
-If you encounter any issues, please open an issue on [GitHub](https://github.com/mustafazidan/apache-airflow-provider-rabbitmq/issues).
+If you encounter any issues, please open an issue on [GitHub](https://github.com/mustafa-zidan/apache-airflow-providers-rabbitmq/issues).
