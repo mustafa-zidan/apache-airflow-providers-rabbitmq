@@ -12,7 +12,7 @@
 
 ----
 
-## Version 0.1.0 (Initial Release)
+## Version 1.0.0 (Initial Release)
 
 We're excited to announce the initial release of the Apache Airflow Provider for RabbitMQ! This provider package enables seamless integration between Apache Airflow and RabbitMQ messaging system.
 
