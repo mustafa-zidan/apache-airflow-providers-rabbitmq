@@ -1,7 +1,7 @@
 # Apache Airflow Provider for RabbitMQ
 
 [![PyPI version](https://badge.fury.io/py/apache-airflow-provider-rabbitmq.svg)](https://badge.fury.io/py/apache-airflow-provider-rabbitmq)
-[![License](https://img.shields.io/github/license/mustafazidan/apache-airflow-provider-rabbitmq.svg)](LICENSE)
+[![License](https://img.shields.io/github/license/mustafa-zidan/apache-airflow-providers-rabbitmq)](LICENSE)
 
 ## Overview
 
