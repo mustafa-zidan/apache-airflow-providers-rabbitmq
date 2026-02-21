@@ -7,7 +7,7 @@ try:
     from airflow.sdk.definitions.context import Context
 except ImportError:
     # Fallback for Airflow < 3.0
-    from typing import Dict, Any
+    from typing import Dict
 
     Context = Dict[str, Any]
 

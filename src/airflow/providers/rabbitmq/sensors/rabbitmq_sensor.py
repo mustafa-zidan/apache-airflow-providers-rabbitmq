@@ -11,7 +11,7 @@ except ImportError:
 try:
     from airflow.sdk.definitions.context import Context
 except ImportError:
-    from typing import Dict, Any
+    from typing import Any, Dict
 
     Context = Dict[str, Any]
 from pika.adapters.blocking_connection import BlockingChannel
