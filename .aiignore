@@ -1,0 +1,59 @@
+# .aiignore - Exclude files and folders from AI Assistant processing
+
+# Virtual environments and dependencies
+.venv/
+venv/
+env/
+.env/
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+dist/
+build/
+
+# uv specific
+uv.lock
+
+# Package manager and build artifacts
+.tox/
+.pytest_cache/
+htmlcov/
+.coverage
+*.egg
+
+# IDE and editor files
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+.DS_Store
+*.iml
+
+# Environment and secrets
+.env
+.env.*
+*.key
+*.pem
+*.p12
+*.pfx
+secrets/
+config/secrets.yml
+
+# Test and log files
+tests/__pycache__/
+test-results/
+allure-results/
+logs/
+*.log
+*.tmp
+
+# Generated documentation
+docs/_build/
+site/
+
+# Temporary files and OS
+.cache/
+*.bak
+*.orig
