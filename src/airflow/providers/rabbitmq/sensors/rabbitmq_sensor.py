@@ -4,11 +4,15 @@ try:
     from airflow.sdk.bases.sensor import BaseSensorOperator, PokeReturnValue
 except ImportError:
     from airflow.sensors.base import BaseSensorOperator
-    PokeReturnValue = Any  # In Airflow 2, poke returns bool or PokeReturnValue (if implemented)
+
+    PokeReturnValue = (
+        Any  # In Airflow 2, poke returns bool or PokeReturnValue (if implemented)
+    )
 try:
     from airflow.sdk.definitions.context import Context
 except ImportError:
     from typing import Dict, Any
+
     Context = Dict[str, Any]
 from pika.adapters.blocking_connection import BlockingChannel
 from pika.frame import Method

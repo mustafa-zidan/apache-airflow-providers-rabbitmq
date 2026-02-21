@@ -4,6 +4,7 @@ from typing import Generator, Optional
 import aio_pika
 import pika
 from aio_pika.abc import AbstractChannel, AbstractRobustConnection
+
 try:
     # Prefer Airflow 2.x base hook path for broader compatibility and easier test mocking
     from airflow.hooks.base import BaseHook as _AFBaseHook
