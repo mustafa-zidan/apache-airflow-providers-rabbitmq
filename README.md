@@ -146,17 +146,42 @@ uv run pytest tests/integration/
 
 ### Multi-version Testing with Tox
 
-To ensure compatibility across different Airflow versions, you can use `tox` through `uv`:
+To test across multiple Python and Airflow versions locally, you can use `tox` directly (it is included in the development dependencies).
+
+#### Python version management
+
+Tox needs the target Python interpreters to be available on your `PATH`. Use [pyenv](https://github.com/pyenv/pyenv) (macOS/Linux) or [pyenv-win](https://github.com/pyenv-win/pyenv-win) (Windows) to install and manage multiple Python versions:
 
 ```bash
-# Run tests for all supported versions
-uv run tox
+# Install pyenv (macOS via Homebrew)
+brew install pyenv
 
-# Run tests for a specific Airflow version (e.g., 2.10)
-uv run tox -e py312-airflow210
+# Install the required Python versions
+pyenv install 3.10 3.11 3.12
+
+# Make all versions available in the project directory
+pyenv local 3.10 3.11 3.12
 ```
 
-Supported environments: `py312-airflow{28,29,210,30,31}`.
+#### Running tox
+
+```bash
+# Run unit tests for all supported Python × Airflow combinations
+uv run tox
+
+# Run unit tests for a specific environment (Python 3.12 + Airflow 2.10)
+uv run tox -e py312-airflow210
+
+# Run integration tests for Airflow 2.10 (requires Docker)
+uv run tox -e py312-airflow210-integration
+
+# Run integration tests for Airflow 3.1 (requires Docker)
+uv run tox -e py312-airflow31-integration
+```
+
+**Unit test environments:** `py{310,311,312}-airflow{28,29,210,30,31}`
+
+**Integration test environments** (require Docker): `py312-airflow{210,31}-integration`
 
 ### Linting, Typing and Formatting
 

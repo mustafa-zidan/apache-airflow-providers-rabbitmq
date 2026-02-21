@@ -30,6 +30,7 @@ development = [
     "isort>=6.0.0,<7.0.0",
     "mypy>=1.15.0,<2.0.0",
     "tox>=4.44.0",
+    "tox-uv>=1.29.0",
 ]
 
 [tool.hatch.build.targets.wheel]

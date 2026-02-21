@@ -10,14 +10,26 @@ jobs:
   test:
     strategy:
       matrix:
-        python-version: ["3.10", "3.11", "3.12"]
-        airflow-version: ["2.8.0", "2.9.0", "2.10.0", "3.0.0", "3.1.0"]
-        exclude:
-          # Airflow 3.x likely requires newer Python
-          - airflow-version: "2.8.0"
-            python-version: "3.12"
-          - airflow-version: "2.9.0"
-            python-version: "3.12"
+        include:
+          # Python 3.10
+          - { python: "3.10", tox-env: py310-airflow28 }
+          - { python: "3.10", tox-env: py310-airflow29 }
+          - { python: "3.10", tox-env: py310-airflow210 }
+          - { python: "3.10", tox-env: py310-airflow30 }
+          - { python: "3.10", tox-env: py310-airflow31 }
+          # Python 3.11
+          - { python: "3.11", tox-env: py311-airflow28 }
+          - { python: "3.11", tox-env: py311-airflow29 }
+          - { python: "3.11", tox-env: py311-airflow210 }
+          - { python: "3.11", tox-env: py311-airflow30 }
+          - { python: "3.11", tox-env: py311-airflow31 }
+          # Python 3.12 (airflow 2.8/2.9 dropped)
+          - { python: "3.12", tox-env: py312-airflow210 }
+          - { python: "3.12", tox-env: py312-airflow30 }
+          - { python: "3.12", tox-env: py312-airflow31 }
+          # Integration tests (latest Airflow 2.x and 3.x)
+          - { python: "3.12", tox-env: py312-airflow210-integration }
+          - { python: "3.12", tox-env: py312-airflow31-integration }
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -25,19 +37,11 @@ jobs:
       - name: Install uv
         uses: astral-sh/setup-uv@v5
 
-      - name: Set up Python ${{ matrix.python-version }}
-        run: uv python install ${{ matrix.python-version }}
+      - name: Set up Python ${{ matrix.python }}
+        run: uv python install ${{ matrix.python }}
 
-      - name: Install project and Airflow ${{ matrix.airflow-version }}
-        run: |
-          uv sync --all-extras --dev
-          uv add "apache-airflow==${{ matrix.airflow-version }}"
+      - name: Install tox
+        run: uv tool install tox --with tox-uv
 
-      - name: Run unit tests
-        run: uv run pytest tests/unit
-
-      - name: Run integration tests
-        # Only run integration tests for one version to save time and resources
-        # and because they require Docker, which might be flaky in matrix
-        if: matrix.airflow-version == '2.10.0'
-        run: uv run pytest tests/integration
+      - name: Run tests
+        run: tox -e ${{ matrix.tox-env }}
