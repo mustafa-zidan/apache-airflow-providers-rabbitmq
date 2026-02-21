@@ -25,7 +25,7 @@ To install the provider, use `pip`:
 pip install apache-airflow-provider-rabbitmq
 ```
 
-> Note: Requires Python 3.12+ and Apache Airflow 3.0 or later.
+> Note: Supports Python 3.10+ and Apache Airflow 2.8.0+ (including 3.x).
 
 ---
 
@@ -102,9 +102,10 @@ with DAG(
 
 ### Prerequisites
 
-- Python 3.12 or later
-- Apache Airflow 3.0 or later
-- RabbitMQ server (local or remote)
+- Python 3.10 or later
+- Apache Airflow 2.8.0 or later
+- Docker (required for integration tests)
+- RabbitMQ server (optional, integration tests use Docker)
 
 ### Setting Up for Development
 
@@ -126,52 +127,48 @@ with DAG(
 
 ### Running Tests
 
-This provider uses `pytest` for testing.
+This provider uses `pytest` for testing. We recommend using `uv` to manage your environment and run tests.
 
 Run all tests:
 ```bash
-pytest
+uv run pytest
 ```
 
 Run unit tests only:
 ```bash
-pytest tests/unit/
+uv run pytest tests/unit/
 ```
 
-Run integration tests only:
+Run integration tests only (requires Docker):
 ```bash
-pytest tests/integration/
+uv run pytest tests/integration/
 ```
 
-Run tests with coverage:
+### Multi-version Testing with Tox
+
+To ensure compatibility across different Airflow versions, you can use `tox` through `uv`:
+
 ```bash
-pytest --cov=airflow.providers.rabbitmq
+# Run tests for all supported versions
+uv run tox
+
+# Run tests for a specific Airflow version (e.g., 2.10)
+uv run tox -e py312-airflow210
 ```
 
-Run tests with coverage and generate HTML report:
+Supported environments: `py312-airflow{28,29,210,30,31}`.
+
+### Linting, Typing and Formatting
+
+We use several tools to maintain code quality:
+
 ```bash
-pytest --cov=airflow.providers.rabbitmq --cov-report=html
-```
-
-Run a specific test file:
-```bash
-pytest tests/unit/hooks/test_rabbitmq_hook.py
-```
-
-Run a specific test:
-```bash
-pytest tests/unit/hooks/test_rabbitmq_hook.py::TestRabbitMQHook::test_init
-```
-
-For more information about testing, see the [tests README](tests/README.md).
-
-### Linting and Formatting
-
-This project uses `pylint` for linting.
-
-Run the linter:
-```bash
-pylint src/ tests/
+# Run all checks
+uv run black .
+uv run isort .
+uv run flake8 src/ tests/
+uv run mypy src/ tests/
+uv run pylint src/ tests/
 ```
 
 ### Contributing

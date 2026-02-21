@@ -2,7 +2,12 @@ import asyncio
 from typing import Any, Optional, Sequence
 
 from airflow.models import BaseOperator
-from airflow.sdk.definitions.context import Context
+try:
+    from airflow.sdk.definitions.context import Context
+except ImportError:
+    # Fallback for Airflow < 3.0
+    from typing import Dict, Any
+    Context = Dict[str, Any]
 
 from airflow.providers.rabbitmq.hooks.rabbitmq_hook import RabbitMQHook
 

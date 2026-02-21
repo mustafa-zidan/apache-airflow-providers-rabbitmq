@@ -4,7 +4,13 @@ from typing import Generator, Optional
 import aio_pika
 import pika
 from aio_pika.abc import AbstractChannel, AbstractRobustConnection
-from airflow.sdk.bases.hook import BaseHook
+try:
+    # Prefer Airflow 2.x base hook path for broader compatibility and easier test mocking
+    from airflow.hooks.base import BaseHook as _AFBaseHook
+except ImportError:
+    from airflow.sdk.bases.hook import BaseHook as _AFBaseHook
+
+BaseHook = _AFBaseHook
 from pika.adapters.blocking_connection import BlockingConnection
 from pika.channel import Channel
 
