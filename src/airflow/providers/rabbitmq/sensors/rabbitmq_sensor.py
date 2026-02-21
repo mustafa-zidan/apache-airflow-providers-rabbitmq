@@ -1,19 +1,22 @@
-from typing import Any, Optional, Sequence
+from __future__ import annotations
+
+from typing import TYPE_CHECKING, Any, Optional, Sequence
 
 try:
-    from airflow.sdk.bases.sensor import BaseSensorOperator, PokeReturnValue
+    from airflow.sdk.bases.sensor import BaseSensorOperator  # Airflow 3.x
 except ImportError:
-    from airflow.sensors.base import BaseSensorOperator
+    from airflow.sensors.base import BaseSensorOperator  # type: ignore[no-redef]
 
-    PokeReturnValue = (
-        Any  # In Airflow 2, poke returns bool or PokeReturnValue (if implemented)
-    )
-try:
-    from airflow.sdk.definitions.context import Context
-except ImportError:
-    from typing import Any, Dict
+if TYPE_CHECKING:
+    try:
+        from airflow.sdk.bases.sensor import PokeReturnValue  # Airflow 3.x
+    except ImportError:
+        from airflow.sensors.base import PokeReturnValue  # type: ignore[no-redef]
+    try:
+        from airflow.sdk.definitions.context import Context  # Airflow 3.x
+    except ImportError:
+        from airflow.utils.context import Context  # type: ignore[attr-defined]
 
-    Context = Dict[str, Any]
 from pika.adapters.blocking_connection import BlockingChannel
 from pika.frame import Method
 

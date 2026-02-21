@@ -1,5 +1,7 @@
+from __future__ import annotations
+
 from contextlib import contextmanager
-from typing import Generator, Optional
+from typing import Generator, Optional, cast
 
 import aio_pika
 import pika
@@ -7,12 +9,9 @@ from aio_pika.abc import AbstractChannel, AbstractRobustConnection
 from pika.adapters.blocking_connection import BlockingChannel, BlockingConnection
 
 try:
-    # Prefer Airflow 2.x base hook path for broader compatibility and easier test mocking
-    from airflow.hooks.base import BaseHook as _AFBaseHook
+    from airflow.sdk.bases.hook import BaseHook  # Airflow 3.x
 except ImportError:
-    from airflow.sdk.bases.hook import BaseHook as _AFBaseHook
-
-BaseHook = _AFBaseHook
+    from airflow.hooks.base import BaseHook  # type: ignore[attr-defined, no-redef]
 
 
 class RabbitMQHook(BaseHook):
@@ -71,7 +70,7 @@ class RabbitMQHook(BaseHook):
 
             return f"amqp://{user_pass}{conn.host}:{conn.port}{vhost}"
         elif conn.extra_dejson.get("connection_uri"):
-            return conn.extra_dejson.get("connection_uri")
+            return cast(str, conn.extra_dejson.get("connection_uri"))
         else:
             raise ValueError(
                 f"No valid connection URI found in connection {self.conn_id}. "

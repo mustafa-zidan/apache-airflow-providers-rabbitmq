@@ -1,15 +1,15 @@
+from __future__ import annotations
+
 import asyncio
-from typing import Any, Optional, Sequence
+from typing import TYPE_CHECKING, Any, Optional, Sequence
 
 from airflow.models import BaseOperator
 
-try:
-    from airflow.sdk.definitions.context import Context
-except ImportError:
-    # Fallback for Airflow < 3.0
-    from typing import Dict
-
-    Context = Dict[str, Any]
+if TYPE_CHECKING:
+    try:
+        from airflow.sdk.definitions.context import Context  # Airflow 3.x
+    except ImportError:
+        from airflow.utils.context import Context  # type: ignore[attr-defined]
 
 from airflow.providers.rabbitmq.hooks.rabbitmq_hook import RabbitMQHook
 
