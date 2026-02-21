@@ -46,10 +46,9 @@ class TestRabbitMQIntegration:
             connection = pika.BlockingConnection(params)
             channel = connection.channel()
             channel.queue_declare(queue=request.cls.queue, durable=False)
-            connection.close() # no need for this connection anymore
+            connection.close()  # no need for this connection anymore
 
             yield  # continue with tests
-
 
     def test_operator_sensor_integration(self):
         """Test integration between RabbitMQProducerOperator and RabbitMQSensor"""

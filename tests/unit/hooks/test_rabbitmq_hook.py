@@ -146,7 +146,7 @@ class TestRabbitMQHook:
         mock_get_sync_connection_cm.assert_called_once()
         mock_connection.channel.assert_called_once()
         mock_channel.basic_publish.assert_called_once_with(
-            exchange=exchange, routing_key=routing_key, body=message
+            exchange=exchange, routing_key=routing_key, body=message.encode()
         )
 
     @mock.patch.object(RabbitMQHook, "get_async_connection")
