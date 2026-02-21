@@ -140,20 +140,23 @@ class TestRabbitMQProducerOperator:
         mock_hook_init.return_value = None
         mock_publish_sync.side_effect = Exception("Test error")
 
-        # Create operator
-        operator = RabbitMQProducerOperator(
-            task_id=self.task_id,
-            connection_uri=self.connection_uri,
-            message=self.message,
-            exchange=self.exchange,
-            routing_key=self.routing_key,
-            use_async=False,
-        )
+        with mock.patch.object(
+            RabbitMQHook, "publish_async", new_callable=mock.AsyncMock
+        ):
+            # Create operator
+            operator = RabbitMQProducerOperator(
+                task_id=self.task_id,
+                connection_uri=self.connection_uri,
+                message=self.message,
+                exchange=self.exchange,
+                routing_key=self.routing_key,
+                use_async=False,
+            )
 
-        # Call execute
-        context: Dict[str, Any] = {}
-        with pytest.raises(Exception):
-            operator.execute(context)
+            # Call execute
+            context: Dict[str, Any] = {}
+            with pytest.raises(Exception):
+                operator.execute(context)
 
         # Assertions
         mock_hook_init.assert_called_once_with(
