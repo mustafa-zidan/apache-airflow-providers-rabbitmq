@@ -1,5 +1,22 @@
 # Apache Airflow Provider for RabbitMQ - Release Notes
 
+## Version 2.1.0 (2026-02-21)
+
+### Enhancements
+- Improve RabbitMQ integration tests: migrate to pytest + testcontainers, use async mock in unit tests, and refactor test class variables.
+- Update provider docs with usage guide, connection setup examples, and known limitations.
+
+### Bug Fixes
+- Remove unnecessary connection close in RabbitMQ hook to prevent double-close errors.
+- Fix type hints across hook and operator modules.
+
+### Maintenance
+- Fix CI configuration for tox-based testing.
+- Fix linting issues across the codebase.
+- Add `.aiignore` file.
+
+---
+
 ## Version 2.0.0 (2025-11-05)
 
 This is a major release that adds compatibility with Apache Airflow 3.x and drops support for 2.x.

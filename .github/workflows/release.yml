@@ -11,7 +11,8 @@ jobs:
     permissions:
       # Required for OIDC publishing to PyPI
       id-token: write
-      contents: read
+      # Required to create GitHub releases
+      contents: write
     steps:
       - uses: actions/checkout@v3
 
@@ -26,14 +27,29 @@ jobs:
       - name: Install the project
         run: uv sync --all-extras --dev
 
-      - name: Run unit tests
-        run: uv run pytest tests/unit
-
-      - name: Run integration tests
-        run: uv run pytest tests/integration
-
       - name: Build package
         run: uv build
+
+      - name: Extract release notes for this version
+        id: release_notes
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          # Extract the section for this version from RELEASE_NOTES.md
+          NOTES=$(awk "/^## Version ${VERSION}/,/^## Version [0-9]/" RELEASE_NOTES.md \
+            | head -n -1 \
+            | sed '/^---$/d')
+          # Store as multiline output
+          {
+            echo "notes<<EOF"
+            echo "$NOTES"
+            echo "EOF"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          body: ${{ steps.release_notes.outputs.notes }}
+          files: dist/*
 
       - name: Publish to PyPI
         uses: pypa/gh-action-pypi-publish@release/v1
