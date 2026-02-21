@@ -12,8 +12,7 @@ except ImportError:
     from airflow.sdk.bases.hook import BaseHook as _AFBaseHook
 
 BaseHook = _AFBaseHook
-from pika.adapters.blocking_connection import BlockingConnection
-from pika.channel import Channel
+from pika.adapters.blocking_connection import BlockingConnection, BlockingChannel
 
 
 class RabbitMQHook(BaseHook):
@@ -25,7 +24,7 @@ class RabbitMQHook(BaseHook):
 
     :param connection_uri: RabbitMQ connection string (e.g., "amqp://user:password@host:port/vhost").
                           If not provided, it will be retrieved from the Airflow connection.
-    :param conn_id: The Airflow connection id to use. Default is "rabbitmq_default".
+    :param conn_id: The Airflow connection id to use. The default is "rabbitmq_default".
     """
 
     conn_name_attr = "conn_id"
@@ -41,7 +40,7 @@ class RabbitMQHook(BaseHook):
 
         :param connection_uri: RabbitMQ connection string (e.g., "amqp://user:password@host:port/vhost").
                               If not provided, it will be retrieved from the Airflow connection.
-        :param conn_id: The Airflow connection id to use. Default is "rabbitmq_default".
+        :param conn_id: The Airflow connection id to use. The default is "rabbitmq_default".
         """
         super().__init__()
         self.conn_id = conn_id
@@ -143,7 +142,7 @@ class RabbitMQHook(BaseHook):
         with self.get_sync_connection_cm() as conn:
             try:
                 self.log.info("Creating channel for publishing message")
-                channel: Channel = conn.channel()
+                channel: BlockingChannel = conn.channel()
 
                 self.log.info(
                     "Publishing message to exchange '%s' with routing key '%s'",
@@ -151,7 +150,7 @@ class RabbitMQHook(BaseHook):
                     routing_key,
                 )
                 channel.basic_publish(
-                    exchange=exchange, routing_key=routing_key, body=message
+                    exchange=exchange, routing_key=routing_key, body=message.encode()
                 )
                 self.log.info("Message published successfully")
             except Exception as e:
