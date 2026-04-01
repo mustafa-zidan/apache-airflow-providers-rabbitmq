@@ -33,6 +33,14 @@ development = [
     "tox-uv>=1.29.0",
 ]
 
+[project.urls]
+Documentation = "https://github.com/mustafa-zidan/apache-airflow-providers-rabbitmq"
+Issues = "https://github.com/mustafa-zidan/apache-airflow-providers-rabbitmq/issues"
+"Source Code" = "https://github.com/mustafa-zidan/apache-airflow-providers-rabbitmq"
+
+[project.entry-points."apache_airflow_provider"]
+provider_info = "airflow.providers.rabbitmq.get_provider_info:get_provider_info"
+
 [tool.hatch.build.targets.wheel]
 packages = ["src/airflow"]
 
