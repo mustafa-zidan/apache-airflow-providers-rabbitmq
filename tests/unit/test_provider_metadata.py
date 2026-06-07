@@ -51,17 +51,19 @@ def test_get_provider_info_exposes_airflow_metadata() -> None:
             "python-modules": ["airflow.providers.rabbitmq.sensors.rabbitmq_sensor"],
         }
     ]
+
+
 def test_pyproject_registers_airflow_provider_entry_point() -> None:
     pyproject_toml = Path(__file__).resolve().parents[2] / "pyproject.toml"
     content = pyproject_toml.read_text()
 
     assert "[project.urls]" in content
     assert (
-        'Documentation = '
+        "Documentation = "
         '"https://github.com/mustafa-zidan/apache-airflow-providers-rabbitmq"'
     ) in content
     assert '[project.entry-points."apache_airflow_provider"]' in content
     assert (
-        'provider_info = '
+        "provider_info = "
         '"airflow.providers.rabbitmq.get_provider_info:get_provider_info"'
     ) in content

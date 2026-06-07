@@ -32,9 +32,7 @@ def get_provider_info() -> dict[str, Any]:
         "hooks": [
             {
                 "integration-name": "RabbitMQ",
-                "python-modules": [
-                    "airflow.providers.rabbitmq.hooks.rabbitmq_hook"
-                ],
+                "python-modules": ["airflow.providers.rabbitmq.hooks.rabbitmq_hook"],
             }
         ],
         "operators": [
