@@ -1,5 +1,17 @@
 # Apache Airflow Provider for RabbitMQ - Release Notes
 
+## Version 2.1.1 (2026-06-07)
+
+### Bug Fixes
+- Add provider entrypoint and `get_provider_info` function so the package is discovered correctly by Airflow (#2).
+- Make the RabbitMQ test queue durable to prevent flaky integration tests.
+
+### Maintenance
+- Update GitHub Actions workflow dependencies to latest versions.
+- Fix formatting issues.
+
+---
+
 ## Version 2.1.0 (2026-02-21)
 
 ### Enhancements
