@@ -44,7 +44,7 @@ class TestRabbitMQIntegration:
             params = pika.URLParameters(request.cls.connection_uri)
             connection = pika.BlockingConnection(params)
             channel = connection.channel()
-            channel.queue_declare(queue=request.cls.queue, durable=False)
+            channel.queue_declare(queue=request.cls.queue, durable=True)
             connection.close()  # no need for this connection anymore
 
             yield  # continue with tests
