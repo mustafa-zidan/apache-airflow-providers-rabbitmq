@@ -35,6 +35,6 @@ def mock_async_rabbitmq_channel():
 def mock_rabbitmq_hook():
     """Fixture to mock the RabbitMQHook"""
     with mock.patch(
-        "airflow.providers.rabbitmq.hooks.rabbitmq_hook.RabbitMQHook"
+        "airflow.provider.rabbitmq.hooks.rabbitmq_hook.RabbitMQHook"
     ) as mock_hook:
         yield mock_hook

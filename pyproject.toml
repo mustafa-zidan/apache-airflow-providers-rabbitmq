@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "apache-airflow-provider-rabbitmq"
-version = "2.1.1"
+version = "2.2.0"
 description = "Airflow provider for RabbitMQ with sync/async messaging."
 authors = [
     { name = "Mustafa Abuelfadl", email = "mustafa@zidan.me" }
@@ -39,7 +39,7 @@ Issues = "https://github.com/mustafa-zidan/apache-airflow-providers-rabbitmq/iss
 "Source Code" = "https://github.com/mustafa-zidan/apache-airflow-providers-rabbitmq"
 
 [project.entry-points."apache_airflow_provider"]
-provider_info = "airflow.providers.rabbitmq.get_provider_info:get_provider_info"
+provider_info = "airflow.provider.rabbitmq.get_provider_info:get_provider_info"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/airflow"]

@@ -1,5 +1,33 @@
 # Apache Airflow Provider for RabbitMQ - Release Notes
 
+## Version 2.2.0 (2026-07-01)
+
+### Breaking Changes
+- The provider namespace has moved from `airflow.providers.rabbitmq` to `airflow.provider.rabbitmq` (singular) to comply with Airflow 3.1.7 provider-discovery requirements. Airflow 3 rejects connection-type registration for packages that live under `airflow.providers.*` and are not part of the official Apache distribution.
+- The entry point `apache_airflow_provider` now points to `airflow.provider.rabbitmq.get_provider_info:get_provider_info`.
+
+### Migration Guide
+Update your DAG imports:
+
+```python
+# Before
+from airflow.providers.rabbitmq.operators.rabbitmq_producer import RabbitMQProducerOperator
+from airflow.providers.rabbitmq.sensors.rabbitmq_sensor import RabbitMQSensor
+from airflow.providers.rabbitmq.hooks.rabbitmq_hook import RabbitMQHook
+
+# After
+from airflow.provider.rabbitmq.operators.rabbitmq_producer import RabbitMQProducerOperator
+from airflow.provider.rabbitmq.sensors.rabbitmq_sensor import RabbitMQSensor
+from airflow.provider.rabbitmq.hooks.rabbitmq_hook import RabbitMQHook
+```
+
+Backward-compatibility shims are provided in the old `airflow.providers.rabbitmq.*` namespace so existing code continues to import without errors, but you should migrate to the new namespace at your earliest convenience.
+
+### Enhancements
+- RabbitMQ connection type is now correctly registered in the Airflow 3.1.7 UI (Admin > Connections > Connection Type dropdown).
+
+---
+
 ## Version 2.1.1 (2026-06-07)
 
 ### Bug Fixes
@@ -95,7 +123,7 @@ pip install apache-airflow-provider-rabbitmq
 
 ```python
 from airflow import DAG
-from airflow.providers.rabbitmq.operators.rabbitmq_producer import RabbitMQProducerOperator
+from airflow.provider.rabbitmq.operators.rabbitmq_producer import RabbitMQProducerOperator
 from datetime import datetime, timedelta
 
 default_args = {
@@ -134,7 +162,7 @@ with DAG('rabbitmq_example', default_args=default_args, schedule_interval=timede
 
 ```python
 from airflow import DAG
-from airflow.providers.rabbitmq.sensors.rabbitmq_sensor import RabbitMQSensor
+from airflow.provider.rabbitmq.sensors.rabbitmq_sensor import RabbitMQSensor
 from datetime import datetime, timedelta
 
 default_args = {
