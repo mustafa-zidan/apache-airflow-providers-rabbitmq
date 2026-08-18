@@ -46,9 +46,7 @@ def get_provider_info() -> dict[str, Any]:
         "sensors": [
             {
                 "integration-name": "RabbitMQ",
-                "python-modules": [
-                    "airflow.provider.rabbitmq.sensors.rabbitmq_sensor"
-                ],
+                "python-modules": ["airflow.provider.rabbitmq.sensors.rabbitmq_sensor"],
             }
         ],
     }

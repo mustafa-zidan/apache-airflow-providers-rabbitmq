@@ -40,9 +40,7 @@ def test_get_provider_info_exposes_airflow_metadata() -> None:
     assert provider_info["operators"] == [
         {
             "integration-name": "RabbitMQ",
-            "python-modules": [
-                "airflow.provider.rabbitmq.operators.rabbitmq_producer"
-            ],
+            "python-modules": ["airflow.provider.rabbitmq.operators.rabbitmq_producer"],
         }
     ]
     assert provider_info["sensors"] == [
