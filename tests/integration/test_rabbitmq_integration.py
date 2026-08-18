@@ -14,10 +14,10 @@ try:
 except Exception:
     DOCKER_AVAILABLE = False
 
-from airflow.providers.rabbitmq.operators.rabbitmq_producer import (
+from airflow.provider.rabbitmq.operators.rabbitmq_producer import (
     RabbitMQProducerOperator,
 )
-from airflow.providers.rabbitmq.sensors.rabbitmq_sensor import RabbitMQSensor
+from airflow.provider.rabbitmq.sensors.rabbitmq_sensor import RabbitMQSensor
 
 
 @pytest.mark.skipif(not DOCKER_AVAILABLE, reason="Docker is not available")

@@ -49,7 +49,7 @@ The `RabbitMQProducerOperator` is used to publish messages to a RabbitMQ exchang
 #### Example
 
 ```python
-from airflow.providers.rabbitmq.operators.rabbitmq_producer import RabbitMQProducerOperator
+from airflow.provider.rabbitmq.operators.rabbitmq_producer import RabbitMQProducerOperator
 
 publish_task = RabbitMQProducerOperator(
     task_id="publish_message",
@@ -76,7 +76,7 @@ The `RabbitMQSensor` waits for a message to appear in a RabbitMQ queue.
 #### Example
 
 ```python
-from airflow.providers.rabbitmq.sensors.rabbitmq_sensor import RabbitMQSensor
+from airflow.provider.rabbitmq.sensors.rabbitmq_sensor import RabbitMQSensor
 
 wait_for_message = RabbitMQSensor(
     task_id="wait_for_message",
@@ -93,7 +93,7 @@ wait_for_message = RabbitMQSensor(
 The `RabbitMQHook` provides a low-level interface to RabbitMQ.
 
 ```python
-from airflow.providers.rabbitmq.hooks.rabbitmq_hook import RabbitMQHook
+from airflow.provider.rabbitmq.hooks.rabbitmq_hook import RabbitMQHook
 
 hook = RabbitMQHook(conn_id="rabbitmq_default")
 hook.publish_sync(message="Sync message", exchange="", routing_key="test_queue")

@@ -1,6 +1,6 @@
-from pathlib import Path
+﻿from pathlib import Path
 
-from airflow.providers.rabbitmq.get_provider_info import get_provider_info
+from airflow.provider.rabbitmq.get_provider_info import get_provider_info
 
 
 def test_get_provider_info_exposes_airflow_metadata() -> None:
@@ -21,34 +21,32 @@ def test_get_provider_info_exposes_airflow_metadata() -> None:
         }
     ]
     assert provider_info["hook-class-names"] == [
-        "airflow.providers.rabbitmq.hooks.rabbitmq_hook.RabbitMQHook"
+        "airflow.provider.rabbitmq.hooks.rabbitmq_hook.RabbitMQHook"
     ]
     assert provider_info["connection-types"] == [
         {
             "connection-type": "rabbitmq",
             "hook-class-name": (
-                "airflow.providers.rabbitmq.hooks.rabbitmq_hook.RabbitMQHook"
+                "airflow.provider.rabbitmq.hooks.rabbitmq_hook.RabbitMQHook"
             ),
         }
     ]
     assert provider_info["hooks"] == [
         {
             "integration-name": "RabbitMQ",
-            "python-modules": ["airflow.providers.rabbitmq.hooks.rabbitmq_hook"],
+            "python-modules": ["airflow.provider.rabbitmq.hooks.rabbitmq_hook"],
         }
     ]
     assert provider_info["operators"] == [
         {
             "integration-name": "RabbitMQ",
-            "python-modules": [
-                "airflow.providers.rabbitmq.operators.rabbitmq_producer"
-            ],
+            "python-modules": ["airflow.provider.rabbitmq.operators.rabbitmq_producer"],
         }
     ]
     assert provider_info["sensors"] == [
         {
             "integration-name": "RabbitMQ",
-            "python-modules": ["airflow.providers.rabbitmq.sensors.rabbitmq_sensor"],
+            "python-modules": ["airflow.provider.rabbitmq.sensors.rabbitmq_sensor"],
         }
     ]
 
@@ -65,5 +63,5 @@ def test_pyproject_registers_airflow_provider_entry_point() -> None:
     assert '[project.entry-points."apache_airflow_provider"]' in content
     assert (
         "provider_info = "
-        '"airflow.providers.rabbitmq.get_provider_info:get_provider_info"'
+        '"airflow.provider.rabbitmq.get_provider_info:get_provider_info"'
     ) in content

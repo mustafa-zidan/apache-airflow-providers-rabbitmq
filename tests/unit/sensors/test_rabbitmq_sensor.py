@@ -7,8 +7,8 @@ from airflow.sensors.base import BaseSensorOperator
 from pika.adapters.blocking_connection import BlockingChannel, BlockingConnection
 from pika.frame import Method
 
-from airflow.providers.rabbitmq.hooks.rabbitmq_hook import RabbitMQHook
-from airflow.providers.rabbitmq.sensors.rabbitmq_sensor import RabbitMQSensor
+from airflow.provider.rabbitmq.hooks.rabbitmq_hook import RabbitMQHook
+from airflow.provider.rabbitmq.sensors.rabbitmq_sensor import RabbitMQSensor
 
 
 class TestRabbitMQSensor:

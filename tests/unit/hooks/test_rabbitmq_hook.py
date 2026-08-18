@@ -6,7 +6,7 @@ import pika
 import pytest
 from pika.adapters.blocking_connection import BlockingConnection
 
-from airflow.providers.rabbitmq.hooks.rabbitmq_hook import RabbitMQHook
+from airflow.provider.rabbitmq.hooks.rabbitmq_hook import RabbitMQHook
 
 
 class TestRabbitMQHook:
@@ -31,9 +31,7 @@ class TestRabbitMQHook:
         assert hook2._connection_uri is None
         assert hook2.conn_id == "test_conn"
 
-    @mock.patch(
-        "airflow.providers.rabbitmq.hooks.rabbitmq_hook.BaseHook.get_connection"
-    )
+    @mock.patch("airflow.provider.rabbitmq.hooks.rabbitmq_hook.BaseHook.get_connection")
     async def test_connection_uri_property(self, mock_get_connection):
         """Test connection_uri property"""
         # Test with connection_uri provided

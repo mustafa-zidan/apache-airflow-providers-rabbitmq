@@ -5,8 +5,8 @@ from unittest import mock
 import pytest
 from airflow.models import BaseOperator
 
-from airflow.providers.rabbitmq.hooks.rabbitmq_hook import RabbitMQHook
-from airflow.providers.rabbitmq.operators.rabbitmq_producer import (
+from airflow.provider.rabbitmq.hooks.rabbitmq_hook import RabbitMQHook
+from airflow.provider.rabbitmq.operators.rabbitmq_producer import (
     RabbitMQProducerOperator,
 )
 

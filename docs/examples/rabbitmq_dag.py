@@ -1,10 +1,10 @@
 from datetime import datetime
 
 from airflow import DAG
-from airflow.providers.rabbitmq.operators.rabbitmq_producer import (
+from airflow.provider.rabbitmq.operators.rabbitmq_producer import (
     RabbitMQProducerOperator,
 )
-from airflow.providers.rabbitmq.sensors.rabbitmq_sensor import RabbitMQSensor
+from airflow.provider.rabbitmq.sensors.rabbitmq_sensor import RabbitMQSensor
 
 with DAG(
     dag_id="rabbitmq_example_dag",
