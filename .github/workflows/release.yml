@@ -34,10 +34,14 @@ jobs:
         id: release_notes
         run: |
           VERSION="${GITHUB_REF_NAME#v}"
-          # Extract the section for this version from RELEASE_NOTES.md
-          NOTES=$(awk "/^## Version ${VERSION}/,/^## Version [0-9]/" RELEASE_NOTES.md \
-            | head -n -1 \
-            | sed '/^---$/d')
+          # Extract the section for this version from RELEASE_NOTES.md.
+          # Print from the matching "## Version <VERSION>" header up to (but not
+          # including) the next "## Version <number>" header, dropping "---" rules.
+          NOTES=$(awk -v ver="$VERSION" '
+            $0 ~ ("^## Version " ver) {flag=1}
+            /^## Version [0-9]/ && $0 !~ ("^## Version " ver) {if (flag) exit}
+            flag && $0 !~ /^---$/ {print}
+          ' RELEASE_NOTES.md)
           # Store as multiline output
           {
             echo "notes<<EOF"
