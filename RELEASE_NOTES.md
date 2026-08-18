@@ -1,9 +1,9 @@
 # Apache Airflow Provider for RabbitMQ - Release Notes
 
-## Version 2.2.0 (2026-07-01)
+## Version 3.0.0 (2026-08-18)
 
 ### Breaking Changes
-- The provider namespace has moved from `airflow.providers.rabbitmq` to `airflow.provider.rabbitmq` (singular) to comply with Airflow 3.1.7 provider-discovery requirements. Airflow 3 rejects connection-type registration for packages that live under `airflow.providers.*` and are not part of the official Apache distribution.
+- The provider namespace has moved from `airflow.providers.rabbitmq` to `airflow.provider.rabbitmq` (singular) to comply with Airflow 3.1.7 provider-discovery requirements. Airflow 3 rejects connection-type registration for packages that live under `airflow.providers.*` and are not part of the official Apache distribution. This namespace change is backward-incompatible and therefore ships as a major release.
 - The entry point `apache_airflow_provider` now points to `airflow.provider.rabbitmq.get_provider_info:get_provider_info`.
 
 ### Migration Guide
