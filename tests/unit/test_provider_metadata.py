@@ -135,6 +135,12 @@ def test_get_provider_info_exposes_airflow_metadata() -> None:
             "python-modules": ["airflow.provider.rabbitmq.sensors.rabbitmq_sensor"],
         }
     ]
+    assert provider_info["triggers"] == [
+        {
+            "integration-name": "RabbitMQ",
+            "python-modules": ["airflow.provider.rabbitmq.triggers.rabbitmq_trigger"],
+        }
+    ]
 
 
 def test_pyproject_registers_airflow_provider_entry_point() -> None:

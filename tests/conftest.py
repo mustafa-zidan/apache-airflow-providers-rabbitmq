@@ -3,7 +3,13 @@
 from unittest import mock
 
 import pytest
+import sqlalchemy.orm.attributes
 
+# Workaround for the absence of ScalarAttributeImpl in SQLAlchemy 2.0 for Airflow 3.1
+if not hasattr(sqlalchemy.orm.attributes, "ScalarAttributeImpl"):
+    sqlalchemy.orm.attributes.ScalarAttributeImpl = getattr(
+        sqlalchemy.orm.attributes, "_ScalarAttributeImpl", object
+    )
 
 @pytest.fixture
 def mock_rabbitmq_connection():
