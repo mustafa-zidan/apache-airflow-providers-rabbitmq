@@ -1,6 +1,6 @@
 # Apache Airflow Provider for RabbitMQ - Release Notes
 
-## Unreleased
+## Version 5.0.1 (2026-10-14)
 
 ### Bug Fixes
 - `RabbitMQTrigger` yields the return value of `apply_function` as the event payload, as Kafka's `AwaitMessageTrigger` does. A falsy return still skips the message, and `True` still yields the standard payload ([#27](https://github.com/mustafa-zidan/apache-airflow-providers-rabbitmq/issues/27)).

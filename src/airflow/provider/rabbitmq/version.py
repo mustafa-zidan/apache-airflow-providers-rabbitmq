@@ -2,4 +2,4 @@
 
 import os
 
-__version__ = os.getenv("PACKAGE_VERSION", "5.0.0")
+__version__ = os.getenv("PACKAGE_VERSION", "5.0.1")

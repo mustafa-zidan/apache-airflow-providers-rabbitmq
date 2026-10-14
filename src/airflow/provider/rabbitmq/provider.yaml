@@ -2,6 +2,7 @@ name: "RabbitMQ"
 package-name: "apache-airflow-provider-rabbitmq"
 description: "Airflow provider for RabbitMQ with sync/async messaging."
 versions:
+  - 5.0.1
   - 5.0.0
   - 4.1.0
   - 4.0.0
