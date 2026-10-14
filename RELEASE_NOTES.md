@@ -1,5 +1,11 @@
 # Apache Airflow Provider for RabbitMQ - Release Notes
 
+## Unreleased
+
+### Bug Fixes
+- `RabbitMQTrigger` yields the return value of `apply_function` as the event payload, as Kafka's `AwaitMessageTrigger` does. A falsy return still skips the message, and `True` still yields the standard payload ([#27](https://github.com/mustafa-zidan/apache-airflow-providers-rabbitmq/issues/27)).
+- `RabbitMQTrigger` unwraps kwargs that Airflow before 3.3.1 passes to `AssetWatcher` triggers still serialization-wrapped (`{"Encoding.VAR": ..., "Encoding.TYPE": "dict"}`), which declared queues with the wrong arguments ([#28](https://github.com/mustafa-zidan/apache-airflow-providers-rabbitmq/issues/28), apache/airflow#65973).
+
 ## Version 5.0.0 (2026-10-13)
 
 ### Breaking Changes

@@ -44,6 +44,32 @@ KWARG_OPTIONS: dict[str, Any] = {
     "arguments_bind": None,
 }
 
+# Airflow < 3.3.1 can hand AssetWatcher triggers their kwargs still wrapped in
+# BaseSerialization markers, stored under the stringified enum names
+# (apache/airflow#65973). Both spellings are unwrapped.
+_TYPE_KEYS = ("__type", "Encoding.TYPE")
+_VAR_KEYS = ("__var", "Encoding.VAR")
+_CONTAINERS: dict[str, Callable[[Any], Any]] = {
+    "dict": dict,
+    "list": list,
+    "tuple": tuple,
+    "set": set,
+    "frozenset": frozenset,
+}
+
+
+def _unwrap_serialized(value: Any) -> Any:
+    """Undo BaseSerialization wrapping of containers; leave other values as they are."""
+    if isinstance(value, dict):
+        type_key = next((k for k in _TYPE_KEYS if k in value), None)
+        var_key = next((k for k in _VAR_KEYS if k in value), None)
+        if type_key and var_key and len(value) == 2 and value[type_key] in _CONTAINERS:
+            return _CONTAINERS[value[type_key]](_unwrap_serialized(value[var_key]))
+        return {k: _unwrap_serialized(v) for k, v in value.items()}
+    if isinstance(value, (list, tuple, set, frozenset)):
+        return type(value)(_unwrap_serialized(v) for v in value)
+    return value
+
 
 class RabbitMQTrigger(BaseEventTrigger):
     """
@@ -67,9 +93,10 @@ class RabbitMQTrigger(BaseEventTrigger):
     :param requeue_on_error: Requeue once when ``apply_function`` raises; a second
         failure rejects the message (to the dead-letter exchange, if there is one).
     :param poll_interval: Seconds between connection attempts.
-    :param apply_function: Dotted path to ``f(message, *args, **kwargs) -> bool``,
-        importable from the triggerer. Messages it returns False for are acked and
-        skipped.
+    :param apply_function: Dotted path to ``f(*args, message, **kwargs)``,
+        importable from the triggerer. A falsy return acks and skips the message.
+        ``True`` yields the standard payload; any other truthy return is yielded
+        as the event payload instead, so it must be JSON-serializable.
     :param apply_function_args: Positional arguments for ``apply_function``.
     :param apply_function_kwargs: Keyword arguments for ``apply_function``.
     :param kwargs: Queue, exchange and binding options listed in ``KWARG_OPTIONS``.
@@ -104,8 +131,10 @@ class RabbitMQTrigger(BaseEventTrigger):
         self.poll_interval = poll_interval
 
         self.apply_function = apply_function
-        self.apply_function_args = list(apply_function_args or [])
-        self.apply_function_kwargs = dict(apply_function_kwargs or {})
+        self.apply_function_args = list(_unwrap_serialized(apply_function_args) or [])
+        self.apply_function_kwargs = dict(
+            _unwrap_serialized(apply_function_kwargs) or {}
+        )
 
         ex_type_str = str(exchange_type).lower() if exchange_type else "queue"
         if ex_type_str == "queue":
@@ -125,7 +154,7 @@ class RabbitMQTrigger(BaseEventTrigger):
             # Store the key that gets bound, so serialize() matches the binding.
             self.routing_key = routing_key or "#"
 
-        options = {**KWARG_OPTIONS, **kwargs}
+        options = {**KWARG_OPTIONS, **_unwrap_serialized(kwargs)}
         self.durable: bool = options["durable"]
         self.exclusive: bool = options["exclusive"]
         self.passive: bool = options["passive"]
@@ -252,7 +281,7 @@ class RabbitMQTrigger(BaseEventTrigger):
         }
 
     async def run(self) -> AsyncIterator[TriggerEvent]:
-        """Consume until a message passes apply_function, then yield it and return."""
+        """Consume until apply_function accepts a message, yield it and return."""
         accept = self._load_apply_function()
         self._connection = await self._connect()
         channel = await self._connection.channel()
@@ -265,10 +294,13 @@ class RabbitMQTrigger(BaseEventTrigger):
                 async with message.process(
                     requeue=self.requeue_on_error, reject_on_redelivered=True
                 ):
-                    if accept is not None and not await accept(message):
+                    result = True if accept is None else await accept(message)
+                    if not result:
                         # Acked on exit, with no sleep before the next message.
                         continue
-                    payload = self._to_payload(message)
+                    # As in Kafka's AwaitMessageTrigger, the function's return
+                    # value is the payload; a plain True keeps the default one.
+                    payload = self._to_payload(message) if result is True else result
                 # Already acked: at-most-once delivery.
                 yield TriggerEvent(payload)  # type: ignore[no-untyped-call]
                 # One event per run: the sensor needs that, and the triggerer

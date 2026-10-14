@@ -35,6 +35,12 @@ def accept_keep(message):
     return message.body == b"keep"
 
 
+def transform_keep(prefix, message, suffix=""):
+    if message.body != b"keep":
+        return None
+    return {"value": prefix + message.body.decode() + suffix}
+
+
 class MockMessage:
 
     def __init__(self, body=b"Test_Message"):
@@ -302,6 +308,70 @@ class TestRabbitMQTrigger:
         event = await asyncio.wait_for(trigger.run().__anext__(), timeout=1)
 
         assert event.payload["body"] == "keep"
+
+    @pytest.mark.asyncio
+    async def test_run_yields_apply_function_return_value(self, mock_abstract_iterator):
+        mock_abstract_iterator.messages[:] = [
+            MockMessage(b"skip"),
+            MockMessage(b"keep"),
+        ]
+        trigger = RabbitMQTrigger(
+            queue_name=self.queue_name,
+            conn_id=self.conn_id,
+            apply_function=f"{__name__}.transform_keep",
+            apply_function_args=["<"],
+            apply_function_kwargs={"suffix": ">"},
+        )
+
+        event = await asyncio.wait_for(trigger.run().__anext__(), timeout=1)
+
+        assert event.payload == {"value": "<keep>"}
+
+    @pytest.mark.parametrize(
+        "type_key,var_key",
+        [("__type", "__var"), ("Encoding.TYPE", "Encoding.VAR")],
+    )
+    def test_unwraps_serialized_kwargs(self, type_key, var_key):
+        """Airflow < 3.3.1 can pass AssetWatcher kwargs still wrapped (#28)"""
+
+        def wrap(type_, var):
+            return {var_key: var, type_key: type_}
+
+        trigger = RabbitMQTrigger(
+            queue_name="q",
+            exchange_type="topic",
+            exchange_name="ex",
+            apply_function_args=wrap("tuple", [1, 2]),
+            apply_function_kwargs=wrap("dict", {"one": 1}),
+            arguments_queue=wrap(
+                "dict",
+                {
+                    "x-queue-type": "classic",
+                    "x-message-ttl": 604800,
+                    "x-nested": wrap("dict", {"a": 1}),
+                },
+            ),
+            arguments_exchange=wrap("dict", {"alternate-exchange": "alt"}),
+            arguments_bind=wrap("dict", {"x-match": "all"}),
+        )
+
+        kwargs = trigger.serialize()[1]
+        assert kwargs["arguments_queue"] == {
+            "x-queue-type": "classic",
+            "x-message-ttl": 604800,
+            "x-nested": {"a": 1},
+        }
+        assert kwargs["arguments_exchange"] == {"alternate-exchange": "alt"}
+        assert kwargs["arguments_bind"] == {"x-match": "all"}
+        assert kwargs["apply_function_args"] == [1, 2]
+        assert kwargs["apply_function_kwargs"] == {"one": 1}
+
+    def test_plain_kwargs_with_marker_like_keys_are_kept(self):
+        arguments = {"__type": "user-value", "x-queue-type": "classic"}
+
+        trigger = RabbitMQTrigger(queue_name="q", arguments_queue=arguments)
+
+        assert trigger.arguments_queue == arguments
 
     @requeue_parametrize
     @pytest.mark.asyncio
