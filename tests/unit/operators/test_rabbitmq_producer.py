@@ -1,6 +1,7 @@
 """Unit tests."""
 
 import asyncio
+from types import MappingProxyType
 from typing import Any, Dict
 from unittest import mock
 
@@ -79,6 +80,31 @@ class TestRabbitMQProducerOperator:
                 exchange=self.exchange,
                 routing_key=self.routing_key,
                 properties={"persistent": True},
+            )
+
+    @pytest.mark.parametrize(
+        "item",
+        [
+            {"body": "b", "properties": {"persistent": True}},
+            MappingProxyType({"body": "b", "properties": {"persistent": True}}),
+        ],
+    )
+    def test_init_rejects_unknown_batch_item_properties(self, item):
+        with pytest.raises(ValueError, match="Unknown message properties: persistent"):
+            RabbitMQProducerOperator(
+                task_id=self.task_id,
+                message=["ok", item],
+                exchange=self.exchange,
+                routing_key=self.routing_key,
+            )
+
+    def test_init_rejects_batch_item_without_body(self):
+        with pytest.raises(ValueError, match="must contain 'body' or 'message'"):
+            RabbitMQProducerOperator(
+                task_id=self.task_id,
+                message=[{"routing_key": "rk"}],
+                exchange=self.exchange,
+                routing_key=self.routing_key,
             )
 
     def test_init_accepts_templated_property_values(self):

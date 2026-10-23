@@ -2,122 +2,48 @@
 
 from __future__ import annotations
 
+import logging
 from contextlib import contextmanager
-from datetime import datetime, timedelta
-from typing import Any, Generator, Mapping, Optional, Union, cast
-from urllib.parse import quote
+from typing import Any, Generator, Mapping, Optional, Sequence
 
 import aio_pika
 import pika
-from aio_pika.abc import AbstractChannel, AbstractExchange, AbstractRobustConnection
+from aio_pika.abc import AbstractChannel, AbstractRobustConnection
 from pika.adapters.blocking_connection import BlockingChannel, BlockingConnection
 
-try:
-    from airflow.sdk.bases.hook import BaseHook  # Airflow 3.x
-except ImportError:
-    from airflow.hooks.base import BaseHook  # type: ignore[attr-defined, no-redef]
-
-
-def _quote(value: Optional[str]) -> str:
-    """Percent-encode a URI component, including '/'."""
-    return quote(value or "", safe="")
-
-
-# AMQP basic properties that both pika and aio-pika accept.
-MESSAGE_PROPERTIES = frozenset(
-    {
-        "content_type",
-        "content_encoding",
-        "headers",
-        "delivery_mode",
-        "priority",
-        "correlation_id",
-        "reply_to",
-        "expiration",
-        "message_id",
-        "timestamp",
-        "type",
-        "user_id",
-        "app_id",
-    }
+from airflow.provider.rabbitmq._compat import BaseHook
+from airflow.provider.rabbitmq.adapters.aio_pika_adapter import (
+    ExchangeCache,
+    build_aio_pika_message,
+)
+from airflow.provider.rabbitmq.adapters.pika_adapter import (
+    build_pika_properties,
+    publish_pika,
+)
+from airflow.provider.rabbitmq.connection import build_connection_uri
+from airflow.provider.rabbitmq.messages.outgoing import (
+    BatchItem,
+    Body,
+    OutgoingMessage,
+    normalize_batch,
+)
+from airflow.provider.rabbitmq.messages.properties import (
+    MESSAGE_PROPERTIES,
+    check_property_names,
+    normalize_properties,
 )
 
-
-def check_property_names(properties: Optional[Mapping[str, Any]]) -> None:
-    """Raise ValueError on keys that aren't AMQP basic properties."""
-    unknown = sorted(set(properties or {}) - MESSAGE_PROPERTIES)
-    if unknown:
-        raise ValueError(
-            f"Unknown message properties: {', '.join(unknown)}. "
-            f"Supported: {', '.join(sorted(MESSAGE_PROPERTIES))}"
-        )
-
-
-def normalize_properties(properties: Optional[Mapping[str, Any]]) -> dict[str, Any]:
-    """
-    Validate message properties and convert them to their AMQP wire form.
-
-    Values may be strings, since templated fields render to strings.
-    ``delivery_mode`` is 1 (transient) or 2 (persistent), ``priority`` 0-255,
-    ``expiration`` milliseconds (int, numeric string or timedelta) and
-    ``timestamp`` seconds since the epoch or a datetime. None values are dropped.
-
-    :return: The properties as pika takes them: ``expiration`` a string of
-        milliseconds and ``timestamp`` an int.
-    """
-    check_property_names(properties)
-    props = {k: v for k, v in (properties or {}).items() if v is not None}
-
-    if "delivery_mode" in props:
-        props["delivery_mode"] = int(props["delivery_mode"])
-        if props["delivery_mode"] not in (1, 2):
-            raise ValueError("delivery_mode must be 1 (transient) or 2 (persistent)")
-    if "priority" in props:
-        props["priority"] = int(props["priority"])
-        if not 0 <= props["priority"] <= 255:
-            raise ValueError("priority must be between 0 and 255")
-    if "expiration" in props:
-        expiration = props["expiration"]
-        if isinstance(expiration, timedelta):
-            milliseconds = int(expiration.total_seconds() * 1000)
-        else:
-            milliseconds = int(expiration)
-        if milliseconds < 0:
-            raise ValueError("expiration must not be negative")
-        props["expiration"] = str(milliseconds)
-    if "timestamp" in props:
-        timestamp = props["timestamp"]
-        props["timestamp"] = (
-            int(timestamp.timestamp())
-            if isinstance(timestamp, datetime)
-            else int(timestamp)
-        )
-    if "headers" in props and not isinstance(props["headers"], Mapping):
-        raise ValueError("headers must be a dict")
-    return props
-
-
-def _to_bytes(message: Union[str, bytes]) -> bytes:
-    return message if isinstance(message, bytes) else message.encode()
-
-
-def build_pika_properties(
-    properties: Optional[Mapping[str, Any]],
-) -> pika.BasicProperties:
-    """Build pika.BasicProperties from the ``properties`` argument."""
-    return pika.BasicProperties(**normalize_properties(properties))
-
-
-def build_aio_pika_message(
-    message: Union[str, bytes], properties: Optional[Mapping[str, Any]]
-) -> aio_pika.Message:
-    """Build an aio_pika.Message, which takes expiration in seconds, not milliseconds."""
-    props: dict[str, Any] = normalize_properties(properties)
-    if "expiration" in props:
-        props["expiration"] = timedelta(milliseconds=int(props["expiration"]))
-    if "delivery_mode" in props:
-        props["delivery_mode"] = aio_pika.DeliveryMode(props["delivery_mode"])
-    return aio_pika.Message(body=_to_bytes(message), **props)
+# The message rules and adapters live in airflow.provider.rabbitmq.messages and
+# airflow.provider.rabbitmq.adapters; they are re-exported here for code that
+# imported them from the hook module.
+__all__ = [
+    "MESSAGE_PROPERTIES",
+    "RabbitMQHook",
+    "build_aio_pika_message",
+    "build_pika_properties",
+    "check_property_names",
+    "normalize_properties",
+]
 
 
 class RabbitMQHook(BaseHook):
@@ -126,6 +52,9 @@ class RabbitMQHook(BaseHook):
 
     This hook inherits from Airflow's BaseHook and provides methods for connecting to RabbitMQ
     and publishing messages both synchronously and asynchronously.
+
+    Every publish method validates all of its messages before it connects, then
+    publishes them in order over a single connection and channel.
 
     :param connection_uri: RabbitMQ connection string (e.g., "amqp://user:password@host:port/vhost").
                           If not provided, it will be retrieved from the Airflow connection.
@@ -151,37 +80,33 @@ class RabbitMQHook(BaseHook):
         self.conn_id = conn_id
         self._connection_uri: Optional[str] = connection_uri
 
+    # Connections
+
     @property
     def connection_uri(self) -> str | None:
         """
         Get the RabbitMQ connection URI.
 
         If a connection_uri was provided during initialization, it will be used.
-        Otherwise, the connection URI will be retrieved from the Airflow connection.
+        Otherwise, the connection URI is built from the Airflow connection, see
+        ``airflow.provider.rabbitmq.connection.build_connection_uri``.
 
         :return: The RabbitMQ connection URI.
         """
         if self._connection_uri:
             return self._connection_uri
 
-        conn = self.get_connection(self.conn_id)
-        if conn.host and conn.port:
-            # Login, password and vhost are percent-encoded so characters like @, /
-            # and # stay part of the value. The colon is kept when the password is
-            # empty: pika fails on a login with no password part.
-            user_pass = ""
-            if conn.login or conn.password:
-                user_pass = f"{_quote(conn.login)}:{_quote(conn.password)}@"
+        uri = build_connection_uri(self.get_connection(self.conn_id))
+        if uri is None:
+            raise ValueError(
+                f"No valid connection URI found in connection {self.conn_id}. "
+                "Either provide host/port/login/password or connection_uri in the connection."
+            )
+        return uri
 
-            vhost = f"/{_quote(conn.schema)}" if conn.schema else ""
-
-            return f"amqp://{user_pass}{conn.host}:{conn.port}{vhost}"
-        if conn.extra_dejson.get("connection_uri"):
-            return cast(str, conn.extra_dejson.get("connection_uri"))
-        raise ValueError(
-            f"No valid connection URI found in connection {self.conn_id}. "
-            "Either provide host/port/login/password or connection_uri in the connection."
-        )
+    def _open_sync_connection(self) -> BlockingConnection:
+        self.log.info("Establishing synchronous connection to RabbitMQ")
+        return pika.BlockingConnection(pika.URLParameters(self.connection_uri))
 
     @contextmanager
     def get_sync_connection_cm(self) -> Generator[BlockingConnection, None, None]:
@@ -193,9 +118,7 @@ class RabbitMQHook(BaseHook):
         """
         conn = None
         try:
-            self.log.info("Establishing synchronous connection to RabbitMQ")
-            params = pika.URLParameters(self.connection_uri)
-            conn = pika.BlockingConnection(params)
+            conn = self._open_sync_connection()
             yield conn
         except Exception as e:
             self.log.error("Error connecting to RabbitMQ: %s", str(e))
@@ -213,9 +136,7 @@ class RabbitMQHook(BaseHook):
         :raises: ConnectionError if the connection cannot be established.
         """
         try:
-            self.log.info("Establishing synchronous connection to RabbitMQ")
-            params = pika.URLParameters(self.connection_uri)
-            return pika.BlockingConnection(params)
+            return self._open_sync_connection()
         except Exception as e:
             self.log.error("Error connecting to RabbitMQ: %s", str(e))
             raise ConnectionError(f"Failed to connect to RabbitMQ: {str(e)}") from e
@@ -234,9 +155,11 @@ class RabbitMQHook(BaseHook):
             self.log.error("Error connecting to RabbitMQ: %s", str(e))
             raise ConnectionError(f"Failed to connect to RabbitMQ: {str(e)}") from e
 
+    # Synchronous publishing
+
     def publish_sync(
         self,
-        message: Union[str, bytes],
+        message: Body,
         exchange: str,
         routing_key: str,
         properties: Optional[Mapping[str, Any]] = None,
@@ -252,31 +175,62 @@ class RabbitMQHook(BaseHook):
         :raises: ConnectionError if the connection cannot be established.
         :raises: Exception if the message cannot be published.
         """
-        pika_properties = build_pika_properties(properties)
+        self._publish_sync(
+            [OutgoingMessage(message, exchange, routing_key, properties)]
+        )
+
+    def publish_batch_sync(
+        self,
+        messages: Sequence[BatchItem],
+        exchange: str = "",
+        routing_key: str = "",
+        properties: Optional[Mapping[str, Any]] = None,
+    ) -> int:
+        """
+        Publish a batch of messages to RabbitMQ synchronously over a single connection and channel.
+
+        :param messages: Sequence of messages to be sent. Items may be str, bytes, or
+            dicts with 'body' (or 'message') and optional 'routing_key', 'exchange', 'properties'.
+        :param exchange: Default exchange name.
+        :param routing_key: Default routing key.
+        :param properties: Default AMQP properties.
+        :return: Number of messages published.
+        :raises: ValueError if a property is unknown or invalid, or if a dict item lacks 'body'.
+        :raises: TypeError if an item or body is of unsupported type.
+        :raises: ConnectionError if the connection cannot be established.
+        :raises: Exception if publishing fails.
+        """
+        if not messages:
+            self.log.warning("No messages to publish: message list is empty.")
+            return 0
+        return self._publish_sync(
+            normalize_batch(messages, exchange, routing_key, properties)
+        )
+
+    def _publish_sync(self, messages: Sequence[OutgoingMessage]) -> int:
+        """Validate every message, then publish them all over one channel."""
+        prepared = [(m, build_pika_properties(m.properties)) for m in messages]
+
         with self.get_sync_connection_cm() as conn:
             try:
-                self.log.info("Creating channel for publishing message")
-                channel: BlockingChannel = conn.channel()
-
                 self.log.info(
-                    "Publishing message to exchange '%s' with routing key '%s'",
-                    exchange,
-                    routing_key,
+                    "Creating channel for publishing %d message(s)", len(prepared)
                 )
-                channel.basic_publish(
-                    exchange=exchange,
-                    routing_key=routing_key,
-                    body=_to_bytes(message),
-                    properties=pika_properties,
-                )
-                self.log.info("Message published successfully")
+                channel: BlockingChannel = conn.channel()
+                for index, (message, pika_properties) in enumerate(prepared, start=1):
+                    self._log_publish(index, len(prepared), message)
+                    publish_pika(channel, message, pika_properties)
+                self.log.info("%d message(s) published successfully", len(prepared))
+                return len(prepared)
             except Exception as e:
                 self.log.error("Error publishing message: %s", str(e))
                 raise
 
+    # Asynchronous publishing
+
     async def publish_async(
         self,
-        message: Union[str, bytes],
+        message: Body,
         exchange: str,
         routing_key: str,
         properties: Optional[Mapping[str, Any]] = None,
@@ -292,28 +246,59 @@ class RabbitMQHook(BaseHook):
         :raises: ConnectionError if the connection cannot be established.
         :raises: Exception if the message cannot be published.
         """
-        outgoing = build_aio_pika_message(message, properties)
+        await self._publish_async(
+            [OutgoingMessage(message, exchange, routing_key, properties)]
+        )
+
+    async def publish_batch_async(
+        self,
+        messages: Sequence[BatchItem],
+        exchange: str = "",
+        routing_key: str = "",
+        properties: Optional[Mapping[str, Any]] = None,
+    ) -> int:
+        """
+        Publish a batch of messages to RabbitMQ asynchronously over a single connection and channel.
+
+        :param messages: Sequence of messages to be sent. Items may be str, bytes, or
+            dicts with 'body' (or 'message') and optional 'routing_key', 'exchange', 'properties'.
+        :param exchange: Default exchange name.
+        :param routing_key: Default routing key.
+        :param properties: Default AMQP properties.
+        :return: Number of messages published.
+        :raises: ValueError if a property is unknown or invalid, or if a dict item lacks 'body'.
+        :raises: TypeError if an item or body is of unsupported type.
+        :raises: ConnectionError if the connection cannot be established.
+        :raises: Exception if publishing fails.
+        """
+        if not messages:
+            self.log.warning("No messages to publish: message list is empty.")
+            return 0
+        return await self._publish_async(
+            normalize_batch(messages, exchange, routing_key, properties)
+        )
+
+    async def _publish_async(self, messages: Sequence[OutgoingMessage]) -> int:
+        """Validate every message, then publish them all over one channel."""
+        prepared = [(m, build_aio_pika_message(m.body, m.properties)) for m in messages]
+
         connection = None
         try:
             connection = await self.get_async_connection()
-            self.log.info("Creating channel for publishing message asynchronously")
-            channel: AbstractChannel = await connection.channel()
-
-            # A named exchange is declared passively, so a missing one raises instead
-            # of the broker silently dropping the message.
-            target: AbstractExchange = (
-                await channel.get_exchange(exchange, ensure=True)
-                if exchange
-                else channel.default_exchange
-            )
-
             self.log.info(
-                "Publishing message asynchronously to exchange '%s' with routing key '%s'",
-                exchange,
-                routing_key,
+                "Creating channel for publishing %d message(s) asynchronously",
+                len(prepared),
             )
-            await target.publish(outgoing, routing_key=routing_key)
-            self.log.info("Message published successfully")
+            channel: AbstractChannel = await connection.channel()
+            exchanges = ExchangeCache(channel)
+            for index, (message, outgoing) in enumerate(prepared, start=1):
+                target = await exchanges.get(message.exchange)
+                self._log_publish(index, len(prepared), message)
+                await target.publish(outgoing, routing_key=message.routing_key)
+            self.log.info(
+                "%d message(s) published asynchronously successfully", len(prepared)
+            )
+            return len(prepared)
         except Exception as e:
             self.log.error("Error publishing message asynchronously: %s", str(e))
             raise
@@ -321,3 +306,15 @@ class RabbitMQHook(BaseHook):
             if connection is not None:
                 self.log.info("Closing asynchronous connection to RabbitMQ")
                 await connection.close()
+
+    def _log_publish(self, index: int, total: int, message: OutgoingMessage) -> None:
+        """Log where a message goes, at DEBUG within a batch; the body is never logged."""
+        self.log.log(
+            logging.INFO if total == 1 else logging.DEBUG,
+            "Publishing message %d/%d (%d bytes) to exchange '%s' with routing key '%s'",
+            index,
+            total,
+            len(message.body_bytes),
+            message.exchange,
+            message.routing_key,
+        )

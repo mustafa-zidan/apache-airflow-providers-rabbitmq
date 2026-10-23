@@ -16,20 +16,13 @@ from aio_pika.abc import (
 from airflow.triggers.base import TriggerEvent
 from asgiref.sync import sync_to_async
 
+from airflow.provider.rabbitmq._compat import (
+    BaseEventTrigger,
+    import_string,
+    unwrap_serialized,
+)
 from airflow.provider.rabbitmq.hooks.rabbitmq_hook import RabbitMQHook
-from airflow.provider.rabbitmq.message import message_payload
-
-# airflow.utils.module_loading is gone in Airflow 3.3; Airflow 3 ships common.compat.
-try:
-    from airflow.providers.common.compat.module_loading import import_string
-except ImportError:
-    from airflow.utils.module_loading import import_string
-
-# BaseEventTrigger is Airflow 3 only; on 2.x the trigger works for deferral only.
-try:
-    from airflow.triggers.base import BaseEventTrigger
-except ImportError:
-    from airflow.triggers.base import BaseTrigger as BaseEventTrigger  # type: ignore[assignment]
+from airflow.provider.rabbitmq.messages.incoming import message_payload
 
 # Options read from **kwargs, with their defaults. Other keys are logged and ignored.
 KWARG_OPTIONS: dict[str, Any] = {
@@ -43,32 +36,6 @@ KWARG_OPTIONS: dict[str, Any] = {
     "arguments_exchange": None,
     "arguments_bind": None,
 }
-
-# Airflow < 3.3.1 can hand AssetWatcher triggers their kwargs still wrapped in
-# BaseSerialization markers, stored under the stringified enum names
-# (apache/airflow#65973). Both spellings are unwrapped.
-_TYPE_KEYS = ("__type", "Encoding.TYPE")
-_VAR_KEYS = ("__var", "Encoding.VAR")
-_CONTAINERS: dict[str, Callable[[Any], Any]] = {
-    "dict": dict,
-    "list": list,
-    "tuple": tuple,
-    "set": set,
-    "frozenset": frozenset,
-}
-
-
-def _unwrap_serialized(value: Any) -> Any:
-    """Undo BaseSerialization wrapping of containers; leave other values as they are."""
-    if isinstance(value, dict):
-        type_key = next((k for k in _TYPE_KEYS if k in value), None)
-        var_key = next((k for k in _VAR_KEYS if k in value), None)
-        if type_key and var_key and len(value) == 2 and value[type_key] in _CONTAINERS:
-            return _CONTAINERS[value[type_key]](_unwrap_serialized(value[var_key]))
-        return {k: _unwrap_serialized(v) for k, v in value.items()}
-    if isinstance(value, (list, tuple, set, frozenset)):
-        return type(value)(_unwrap_serialized(v) for v in value)
-    return value
 
 
 class RabbitMQTrigger(BaseEventTrigger):
@@ -131,9 +98,9 @@ class RabbitMQTrigger(BaseEventTrigger):
         self.poll_interval = poll_interval
 
         self.apply_function = apply_function
-        self.apply_function_args = list(_unwrap_serialized(apply_function_args) or [])
+        self.apply_function_args = list(unwrap_serialized(apply_function_args) or [])
         self.apply_function_kwargs = dict(
-            _unwrap_serialized(apply_function_kwargs) or {}
+            unwrap_serialized(apply_function_kwargs) or {}
         )
 
         ex_type_str = str(exchange_type).lower() if exchange_type else "queue"
@@ -154,7 +121,7 @@ class RabbitMQTrigger(BaseEventTrigger):
             # Store the key that gets bound, so serialize() matches the binding.
             self.routing_key = routing_key or "#"
 
-        options = {**KWARG_OPTIONS, **_unwrap_serialized(kwargs)}
+        options = {**KWARG_OPTIONS, **unwrap_serialized(kwargs)}
         self.durable: bool = options["durable"]
         self.exclusive: bool = options["exclusive"]
         self.passive: bool = options["passive"]

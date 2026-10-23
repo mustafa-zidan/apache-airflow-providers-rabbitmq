@@ -8,25 +8,15 @@ from pika.adapters.blocking_connection import BlockingChannel
 from pika.exceptions import AMQPError
 from pika.spec import Basic, BasicProperties
 
+from airflow.provider.rabbitmq._compat import BaseSensorOperator, PokeReturnValue
 from airflow.provider.rabbitmq.hooks.rabbitmq_hook import RabbitMQHook
-from airflow.provider.rabbitmq.message import DESERIALIZERS, message_payload
-
-try:
-    from airflow.sdk.bases.sensor import (  # Airflow 3.x
-        BaseSensorOperator,
-        PokeReturnValue,
-    )
-except ImportError:
-    from airflow.sensors.base import (  # type: ignore[no-redef]
-        BaseSensorOperator,
-        PokeReturnValue,
-    )
+from airflow.provider.rabbitmq.messages.incoming import (
+    check_deserialize,
+    message_payload,
+)
 
 if TYPE_CHECKING:
-    try:
-        from airflow.sdk.definitions.context import Context  # Airflow 3.x
-    except ImportError:
-        from airflow.utils.context import Context  # type: ignore[attr-defined,no-redef]
+    from airflow.provider.rabbitmq._compat import Context
 
 
 class RabbitMQSensor(BaseSensorOperator):  # pylint: disable=too-many-ancestors
@@ -78,10 +68,7 @@ class RabbitMQSensor(BaseSensorOperator):  # pylint: disable=too-many-ancestors
         :param max_xcom_bytes: Largest body to push to XCom. Default None, no limit.
         """
         super().__init__(**kwargs)
-        if deserialize not in DESERIALIZERS:
-            raise ValueError(
-                f"deserialize must be one of {DESERIALIZERS}: {deserialize!r}"
-            )
+        check_deserialize(deserialize)
         self.conn_id: str = conn_id
         self.queue_name: str = queue_name
         self.auto_ack: bool = auto_ack

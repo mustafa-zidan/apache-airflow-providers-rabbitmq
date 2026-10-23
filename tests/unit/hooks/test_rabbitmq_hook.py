@@ -14,8 +14,8 @@ from airflow.provider.rabbitmq.hooks.rabbitmq_hook import (
     RabbitMQHook,
     build_aio_pika_message,
     build_pika_properties,
-    normalize_properties,
 )
+from airflow.provider.rabbitmq.messages.properties import normalize_properties
 
 ALL_PROPERTIES = {
     "content_type": "application/json",
