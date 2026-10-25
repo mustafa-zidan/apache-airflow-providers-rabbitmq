@@ -28,7 +28,8 @@ class RabbitMQProducerOperator(BaseOperator):
     When ``message`` is a list or sequence, messages are published in order over a single
     connection and channel. Individual items can be ``str``, ``bytes``, or ``dict`` containing
     ``body`` (or ``message``) and optional ``routing_key``, ``exchange``, and ``properties``
-    overrides.
+    overrides. An item's ``properties`` are merged over ``properties`` key by key; set a
+    key to None to unset it for that item.
 
     If a template renders to a list (e.g. from upstream XCom), ensure the DAG has
     ``render_template_as_native_obj=True``.

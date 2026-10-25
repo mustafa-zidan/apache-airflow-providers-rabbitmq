@@ -48,6 +48,45 @@ def test_normalize_batch_item_applies_defaults(item, expected):
 
 
 @pytest.mark.parametrize(
+    "default_properties,item_properties,expected",
+    [
+        (
+            {"delivery_mode": 2, "content_type": "application/json"},
+            {"priority": 5},
+            {"delivery_mode": 2, "content_type": "application/json", "priority": 5},
+        ),
+        (
+            {"delivery_mode": 2, "priority": 1},
+            {"priority": 9},
+            {"delivery_mode": 2, "priority": 9},
+        ),
+        ({"delivery_mode": 2}, {}, {"delivery_mode": 2}),
+        ({"delivery_mode": 2}, {"delivery_mode": None}, {"delivery_mode": None}),
+        (None, {"priority": 5}, {"priority": 5}),
+        ({"headers": {"a": 1}}, {"headers": {"b": 2}}, {"headers": {"b": 2}}),
+    ],
+)
+def test_normalize_batch_item_merges_properties_over_defaults(
+    default_properties, item_properties, expected
+):
+    outgoing = normalize_batch_item(
+        {"body": "b", "properties": item_properties}, "ex", "key", default_properties
+    )
+
+    assert outgoing.properties == expected
+
+
+def test_normalize_batch_item_does_not_mutate_default_properties():
+    defaults = {"delivery_mode": 2}
+
+    normalize_batch_item(
+        {"body": "b", "properties": {"priority": 5}}, "ex", "key", defaults
+    )
+
+    assert defaults == {"delivery_mode": 2}
+
+
+@pytest.mark.parametrize(
     "item,error,match",
     [
         ({"routing_key": "rk"}, ValueError, "must contain 'body' or 'message'"),

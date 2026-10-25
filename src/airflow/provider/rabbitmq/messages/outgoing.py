@@ -40,6 +40,20 @@ def _override(item: Mapping[str, Any], key: str, default: Any) -> Any:
     return default if value is None else value
 
 
+def _merge_properties(
+    default: Optional[Properties], override: Optional[Properties]
+) -> Optional[Properties]:
+    """
+    Merge item properties over the defaults, key by key.
+
+    A key set to None in the item unsets the default, since None values are
+    dropped when properties are normalized. ``headers`` is replaced, not merged.
+    """
+    if override is None:
+        return default
+    return {**(default or {}), **override}
+
+
 def normalize_batch_item(
     item: BatchItem,
     default_exchange: str,
@@ -51,7 +65,8 @@ def normalize_batch_item(
 
     A str or bytes item is the body. A mapping item holds ``body`` (or ``message``)
     and optional ``exchange``, ``routing_key`` and ``properties``; missing or None
-    values fall back to the defaults.
+    values fall back to the defaults, and item properties are merged over the
+    default properties.
 
     :raises: ValueError if a mapping item has neither 'body' nor 'message'.
     :raises: TypeError if the item or its body is of an unsupported type.
@@ -77,7 +92,7 @@ def normalize_batch_item(
             body,
             _override(item, "exchange", default_exchange),
             _override(item, "routing_key", default_routing_key),
-            _override(item, "properties", default_properties),
+            _merge_properties(default_properties, item.get("properties")),
         )
     raise TypeError(
         f"Batch item must be str, bytes, or dict, got {type(item).__name__}"
