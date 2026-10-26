@@ -9,6 +9,10 @@ The `RabbitMQProducerOperator` supports both synchronous and asynchronous messag
 - **Synchronous**: Uses the `pika` library. This is the default. It's more straightforward but blocks until the message is sent.
 - **Asynchronous**: Uses the `aio-pika` library. This can be more efficient in certain scenarios, but it's executed using `asyncio.run()`, which may have overhead for single messages.
 
+## Batch Delivery
+
+A batch is not atomic. If publishing fails partway through, the messages before the failure are already on the broker, the task fails, and a retry publishes the whole list again. Delivery is at-least-once, so consumers should tolerate duplicates (for example by `message_id`). Without publisher confirms ([#13](https://github.com/mustafa-zidan/apache-airflow-providers-rabbitmq/issues/13)) the task also can't tell whether the broker accepted every message, only that they were sent.
+
 ## Sensor Behavior
 
 The `RabbitMQSensor` uses the synchronous `pika` library for polling the queue.

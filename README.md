@@ -12,6 +12,7 @@ The **Apache Airflow Provider for RabbitMQ** enables seamless integration with R
 ## Features
 
 - Publish messages to RabbitMQ exchanges/queues, with AMQP properties (headers, content type, persistence, ...).
+- Publish a list of messages over one connection, with per-message routing keys and properties.
 - Wait for messages in a queue using an Airflow Sensor, and pass the message to downstream tasks via XCom.
 - RabbitMQ connection management via Airflow Connections (URI or host/login/password/port/schema).
 

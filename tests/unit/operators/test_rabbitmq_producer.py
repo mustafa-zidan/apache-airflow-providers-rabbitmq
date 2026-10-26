@@ -217,3 +217,79 @@ class TestRabbitMQProducerOperator:
         mock_publish_sync.assert_called_once_with(
             self.message, self.exchange, self.routing_key, properties=None
         )
+
+    @mock.patch.object(RabbitMQHook, "publish_batch_sync", return_value=2)
+    @mock.patch.object(RabbitMQHook, "__init__", return_value=None)
+    def test_execute_batch_sync(self, _, mock_publish_batch_sync):
+        """A list message is published as one batch and the count is returned"""
+        messages = ["a", {"body": "b", "routing_key": "other"}]
+        operator = RabbitMQProducerOperator(
+            task_id=self.task_id,
+            message=messages,
+            exchange=self.exchange,
+            routing_key=self.routing_key,
+            properties={"delivery_mode": 2},
+        )
+
+        assert operator.execute({}) == 2
+        mock_publish_batch_sync.assert_called_once_with(
+            messages,
+            self.exchange,
+            self.routing_key,
+            properties={"delivery_mode": 2},
+        )
+
+    @mock.patch.object(RabbitMQHook, "publish_batch_async", new_callable=mock.AsyncMock)
+    @mock.patch.object(RabbitMQHook, "__init__", return_value=None)
+    def test_execute_batch_async(self, _, mock_publish_batch_async):
+        mock_publish_batch_async.return_value = 3
+        operator = RabbitMQProducerOperator(
+            task_id=self.task_id,
+            message=("a", "b", "c"),
+            exchange=self.exchange,
+            routing_key=self.routing_key,
+            use_async=True,
+        )
+
+        assert operator.execute({}) == 3
+        mock_publish_batch_async.assert_awaited_once_with(
+            ("a", "b", "c"), self.exchange, self.routing_key, properties=None
+        )
+
+    @mock.patch.object(RabbitMQHook, "publish_batch_sync")
+    @mock.patch.object(RabbitMQHook, "__init__", return_value=None)
+    def test_execute_empty_batch_publishes_nothing(self, _, mock_publish_batch_sync):
+        operator = RabbitMQProducerOperator(
+            task_id=self.task_id,
+            message=[],
+            exchange=self.exchange,
+            routing_key=self.routing_key,
+        )
+
+        assert operator.execute({}) == 0
+        mock_publish_batch_sync.assert_not_called()
+
+    @mock.patch.object(RabbitMQHook, "publish_sync")
+    @mock.patch.object(RabbitMQHook, "__init__", return_value=None)
+    def test_execute_single_message_returns_one(self, _, mock_publish_sync):
+        operator = RabbitMQProducerOperator(
+            task_id=self.task_id,
+            message=self.message,
+            exchange=self.exchange,
+            routing_key=self.routing_key,
+        )
+
+        assert operator.execute({}) == 1
+
+    @mock.patch.object(RabbitMQHook, "__init__", return_value=None)
+    def test_execute_rejects_unsupported_message_type(self, _):
+        operator = RabbitMQProducerOperator(
+            task_id=self.task_id,
+            message=self.message,
+            exchange=self.exchange,
+            routing_key=self.routing_key,
+        )
+        operator.message = 42  # e.g. a template that rendered to a native int
+
+        with pytest.raises(TypeError, match="got int"):
+            operator.execute({})

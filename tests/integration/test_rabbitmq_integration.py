@@ -237,3 +237,71 @@ class TestRabbitMQIntegration:
         assert properties.priority == 5
         assert properties.correlation_id == "run-1"
         assert properties.expiration == "60000"
+
+    @pytest.mark.parametrize("use_async", [False, True])
+    def test_publish_batch_over_one_connection(self, use_async: bool) -> None:
+        """A list of 100 messages lands on the queue through a single connection"""
+        queue = f"batch_queue_{'async' if use_async else 'sync'}"
+        connection = pika.BlockingConnection(pika.URLParameters(self.connection_uri))
+        try:
+            connection.channel().queue_declare(queue=queue, durable=True)
+        finally:
+            connection.close()
+        operator = RabbitMQProducerOperator(
+            task_id=self.task_id,
+            conn_id=self.conn_id,
+            message=[f"m{i}" for i in range(100)],
+            exchange="",
+            routing_key=queue,
+            use_async=use_async,
+        )
+
+        if use_async:
+            with mock.patch(
+                "aio_pika.connect_robust", wraps=aio_pika.connect_robust
+            ) as connect:
+                count = operator.execute({})
+        else:
+            with mock.patch(
+                "pika.BlockingConnection", wraps=pika.BlockingConnection
+            ) as connect:
+                count = operator.execute({})
+
+        assert count == 100
+        assert connect.call_count == 1
+        assert self._message_count(queue) == 100
+        assert self._get_message(queue) == b"m0"
+
+    def test_publish_batch_routes_each_item(self) -> None:
+        """Dict items override the routing key and exchange per message"""
+        RabbitMQProducerOperator(
+            task_id=self.task_id,
+            conn_id=self.conn_id,
+            message=[
+                "to default queue",
+                {
+                    "body": "to named exchange",
+                    "exchange": self.named_exchange,
+                    "routing_key": self.named_exchange_routing_key,
+                },
+            ],
+            exchange="",
+            routing_key=self.queue,
+        ).execute({})
+
+        assert self._get_message(self.queue) == b"to default queue"
+        assert self._get_message(self.named_exchange_queue) == b"to named exchange"
+
+    def _message_count(self, queue: str) -> int:
+        """Ready messages on a queue, polled briefly while the broker catches up."""
+        connection = pika.BlockingConnection(pika.URLParameters(self.connection_uri))
+        try:
+            channel = connection.channel()
+            for _ in range(20):
+                count = channel.queue_declare(queue, passive=True).method.message_count
+                if count:
+                    return count
+                connection.sleep(0.1)
+            return count
+        finally:
+            connection.close()

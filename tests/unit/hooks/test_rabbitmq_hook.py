@@ -375,3 +375,96 @@ class TestRabbitMQHook:
             await self.hook.publish_async("m", "", "q", properties={"priority": -1})
 
         mock_get_async_connection.assert_not_called()
+
+    @mock.patch.object(RabbitMQHook, "get_sync_connection_cm")
+    def test_publish_batch_sync_uses_one_channel(
+        self, mock_get_sync_connection_cm: mock.MagicMock
+    ) -> None:
+        """A batch goes out in order over one channel, with per-item overrides"""
+        mock_connection = mock.MagicMock(spec=BlockingConnection)
+        mock_get_sync_connection_cm.return_value.__enter__.return_value = (
+            mock_connection
+        )
+
+        count = self.hook.publish_batch_sync(
+            [
+                "a",
+                b"b",
+                {"body": "c", "routing_key": "other", "properties": {"priority": 1}},
+                {"message": "d", "exchange": "ex2"},
+            ],
+            "ex",
+            "key",
+            properties={"delivery_mode": 2},
+        )
+
+        assert count == 4
+        mock_get_sync_connection_cm.assert_called_once()
+        mock_connection.channel.assert_called_once()
+        calls = mock_connection.channel.return_value.basic_publish.call_args_list
+        assert [
+            (c.kwargs["exchange"], c.kwargs["routing_key"], c.kwargs["body"])
+            for c in calls
+        ] == [
+            ("ex", "key", b"a"),
+            ("ex", "key", b"b"),
+            ("ex", "other", b"c"),
+            ("ex2", "key", b"d"),
+        ]
+        assert all(c.kwargs["properties"].delivery_mode == 2 for c in calls)
+        assert calls[2].kwargs["properties"].priority == 1
+
+    @mock.patch.object(RabbitMQHook, "get_sync_connection_cm")
+    def test_publish_batch_sync_empty_does_not_connect(
+        self, mock_get_sync_connection_cm: mock.MagicMock
+    ) -> None:
+        assert self.hook.publish_batch_sync([], "ex", "key") == 0
+
+        mock_get_sync_connection_cm.assert_not_called()
+
+    @mock.patch.object(RabbitMQHook, "get_sync_connection_cm")
+    def test_publish_batch_sync_rejects_invalid_item_before_connecting(
+        self, mock_get_sync_connection_cm: mock.MagicMock
+    ) -> None:
+        """One bad item fails the whole batch before anything is sent"""
+        with pytest.raises(ValueError, match="priority"):
+            self.hook.publish_batch_sync(
+                ["ok", {"body": "bad", "properties": {"priority": -1}}], "ex", "key"
+            )
+
+        mock_get_sync_connection_cm.assert_not_called()
+
+    @mock.patch.object(RabbitMQHook, "get_async_connection")
+    async def test_publish_batch_async_uses_one_channel(
+        self, mock_get_async_connection: mock.MagicMock
+    ) -> None:
+        """A batch goes out in order over one channel, with per-item overrides"""
+        mock_channel = self._mock_async_connection(mock_get_async_connection)
+
+        count = await self.hook.publish_batch_async(
+            ["a", {"body": b"b", "exchange": "ex", "routing_key": "rk"}, "c"],
+            "",
+            "q",
+        )
+
+        assert count == 3
+        mock_get_async_connection.assert_awaited_once()
+        mock_get_async_connection.return_value.channel.assert_awaited_once()
+        default_publishes = mock_channel.default_exchange.publish.await_args_list
+        assert [(c.args[0].body, c.kwargs) for c in default_publishes] == [
+            (b"a", {"routing_key": "q"}),
+            (b"c", {"routing_key": "q"}),
+        ]
+        mock_channel.get_exchange.assert_awaited_once_with("ex", ensure=True)
+        named_publish = mock_channel.get_exchange.return_value.publish
+        assert named_publish.await_args.args[0].body == b"b"
+        assert named_publish.await_args.kwargs == {"routing_key": "rk"}
+        mock_get_async_connection.return_value.close.assert_awaited_once()
+
+    @mock.patch.object(RabbitMQHook, "get_async_connection")
+    async def test_publish_batch_async_empty_does_not_connect(
+        self, mock_get_async_connection: mock.MagicMock
+    ) -> None:
+        assert await self.hook.publish_batch_async([], "", "q") == 0
+
+        mock_get_async_connection.assert_not_called()
