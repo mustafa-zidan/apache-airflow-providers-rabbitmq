@@ -141,7 +141,7 @@ case "${1:-}" in
     kc exec deployment/airflow -- python -c '
 import sys
 from airflow.provider.rabbitmq.hooks.rabbitmq_hook import RabbitMQHook
-hook = RabbitMQHook(connection_uri="amqp://airflow:airflow@rabbitmq:5672")
+hook = RabbitMQHook()
 hook.publish_sync(sys.argv[2], exchange=sys.argv[3], routing_key=sys.argv[1])
 print("published")
 ' "$2" "$3" "${4:-}"

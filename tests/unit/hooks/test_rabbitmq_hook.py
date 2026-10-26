@@ -42,34 +42,35 @@ class TestRabbitMQHook:
     connection_uri = "amqp://guest:guest@localhost:5672/"
     conn_id = "rabbitmq_default"
 
+    @pytest.fixture(autouse=True)
+    def default_connection(self):
+        """Resolve every conn_id to a connection with the test URI in its extras"""
+        conn = mock.MagicMock(
+            host=None, port=None, extra_dejson={"connection_uri": self.connection_uri}
+        )
+        with mock.patch(
+            "airflow.provider.rabbitmq.hooks.rabbitmq_hook.BaseHook.get_connection",
+            return_value=conn,
+        ):
+            yield
+
     @property
     def hook(self) -> RabbitMQHook:
-        """A hook configured with the test connection URI"""
-        return RabbitMQHook(connection_uri=self.connection_uri)
+        """A hook whose connection has the test URI"""
+        return RabbitMQHook()
 
     def _hook(self, **delivery: bool) -> RabbitMQHook:
         """A hook with the test connection URI and the given confirm/mandatory"""
-        return RabbitMQHook(connection_uri=self.connection_uri, **delivery)
+        return RabbitMQHook(**delivery)
 
     async def test_init(self):
         """Test hook initialization"""
-        # Test with connection_uri
-        hook1 = RabbitMQHook(connection_uri=self.connection_uri)
-        assert hook1.connection_uri == self.connection_uri
-        assert hook1.conn_id == "rabbitmq_default"
-
-        # Test with conn_id
-        hook2 = RabbitMQHook(conn_id="test_conn")
-        assert hook2.conn_id == "test_conn"
+        assert RabbitMQHook().conn_id == "rabbitmq_default"
+        assert RabbitMQHook(conn_id="test_conn").conn_id == "test_conn"
 
     @mock.patch("airflow.provider.rabbitmq.hooks.rabbitmq_hook.BaseHook.get_connection")
     async def test_connection_uri_property(self, mock_get_connection):
         """Test connection_uri property"""
-        # Test with connection_uri provided
-        hook1 = RabbitMQHook(connection_uri=self.connection_uri)
-        assert hook1.connection_uri == self.connection_uri
-        mock_get_connection.assert_not_called()
-
         # Test with host/port/login/password
         mock_conn = mock.MagicMock()
         mock_conn.host = "localhost"

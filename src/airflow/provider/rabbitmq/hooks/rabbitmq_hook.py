@@ -66,8 +66,6 @@ class RabbitMQHook(BaseHook):
     ``mandatory`` also raises it when a message matches no queue, instead of the
     broker dropping it.
 
-    :param connection_uri: RabbitMQ connection string (e.g., "amqp://user:password@host:port/vhost").
-                          If not provided, it will be retrieved from the Airflow connection.
     :param conn_id: The Airflow connection id to use. The default is "rabbitmq_default".
     :param confirm: Wait for the broker to ack each published message. Defaults to True.
     :param mandatory: Fail when a message matches no queue. Needs ``confirm``.
@@ -81,7 +79,6 @@ class RabbitMQHook(BaseHook):
 
     def __init__(
         self,
-        connection_uri: Optional[str] = None,
         conn_id: str = default_conn_name,
         confirm: bool = True,
         mandatory: bool = False,
@@ -89,8 +86,6 @@ class RabbitMQHook(BaseHook):
         """
         Initialize RabbitMQ connection settings.
 
-        :param connection_uri: RabbitMQ connection string (e.g., "amqp://user:password@host:port/vhost").
-                              If not provided, it will be retrieved from the Airflow connection.
         :param conn_id: The Airflow connection id to use. The default is "rabbitmq_default".
         :param confirm: Wait for the broker to ack each published message.
         :param mandatory: Fail when a message matches no queue. Needs ``confirm``.
@@ -99,7 +94,6 @@ class RabbitMQHook(BaseHook):
         super().__init__()
         check_delivery_options(confirm, mandatory)
         self.conn_id = conn_id
-        self._connection_uri: Optional[str] = connection_uri
         self.confirm = confirm
         self.mandatory = mandatory
 
@@ -110,8 +104,7 @@ class RabbitMQHook(BaseHook):
         """
         Get the RabbitMQ connection URI.
 
-        If a connection_uri was provided during initialization, it will be used.
-        Otherwise, the connection URI is built from the Airflow connection, see
+        The URI is built from the Airflow connection, see
         ``airflow.provider.rabbitmq.connection.build_connection_uri``.
 
         :return: The RabbitMQ connection URI.
@@ -119,15 +112,7 @@ class RabbitMQHook(BaseHook):
         return self._get_connection_settings()[0]
 
     def _get_connection_settings(self) -> tuple[str, Optional[ssl.SSLContext]]:
-        """
-        Return the URI and, when the ``ssl`` extra is set, the TLS context.
-
-        A connection_uri given to the hook has no extras, so its TLS settings come
-        from the URI alone.
-        """
-        if self._connection_uri:
-            return self._connection_uri, None
-
+        """Return the URI and, when the ``ssl`` extra is set, the TLS context."""
         conn = self.get_connection(self.conn_id)
         uri = build_connection_uri(conn)
         if uri is None:

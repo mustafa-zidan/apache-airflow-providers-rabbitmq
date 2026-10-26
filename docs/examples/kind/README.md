@@ -198,12 +198,16 @@ management UI if you like.
 
 ## From the host
 
-The broker is also exposed on localhost, so you can test against it outside Airflow, for example with the hook:
+The broker is also exposed on localhost, so you can test against it outside Airflow, for example with the hook and a
+connection defined in an environment variable:
 
 ```python
+import os
+
 from airflow.provider.rabbitmq.hooks.rabbitmq_hook import RabbitMQHook
 
-RabbitMQHook(connection_uri="amqp://airflow:airflow@localhost:5672").publish_sync(
+os.environ["AIRFLOW_CONN_RABBITMQ_DEFAULT"] = "rabbitmq://airflow:airflow@localhost:5672"
+RabbitMQHook().publish_sync(
     "from the host", exchange="", routing_key="demo_queue"
 )
 ```

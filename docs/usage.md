@@ -53,8 +53,6 @@ Set `"ssl": true` in the **Extra** field to connect over TLS. With Host set, the
 
 `ssl` and `ssl_verify` must be JSON booleans. A string like `"true"` or `"yes"` raises `ValueError` rather than being guessed at.
 
-A `connection_uri` passed directly to `RabbitMQHook` doesn't read these extras.
-
 ## Operators
 
 ### RabbitMQProducerOperator

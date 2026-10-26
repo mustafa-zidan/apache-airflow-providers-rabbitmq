@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+### Breaking Changes
+- `RabbitMQHook` no longer takes `connection_uri`. Every hook, operator, sensor and trigger connects through `conn_id`. To use a raw URI, put it in the connection's Extra field as `{"connection_uri": "amqp://..."}`, or define the connection with an `AIRFLOW_CONN_<CONN_ID>` environment variable. The read-only `connection_uri` property still returns the URI built from the connection.
+
 ### Behaviour Changes
 - Publishing waits for the broker to accept each message. `RabbitMQProducerOperator` and `RabbitMQHook` take `confirm` (default `True`), which turns on publisher confirms, and the task fails with `MessageNotDeliveredError` when the broker nacks a message. The async path already used confirms; the sync path didn't, so a sync task that published into a full `reject-publish` queue used to succeed with the message lost, and now fails. Pass `confirm=False` for the old behaviour ([#13](https://github.com/mustafa-zidan/apache-airflow-providers-rabbitmq/issues/13)).
 - `RabbitMQHook.get_sync_connection_cm` raises `ConnectionError` only when the connection can't be opened. An error raised inside the `with` block now propagates as itself, so a sync publish to a missing exchange raises pika's `ChannelClosedByBroker` instead of `ConnectionError`. `RabbitMQSensor` now fails the task on a `max_xcom_bytes` or deserialize error, as documented, instead of logging it as a connection error and poking again.
