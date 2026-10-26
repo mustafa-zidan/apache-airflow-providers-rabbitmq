@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import ssl
 from contextlib import contextmanager
 from typing import Any, Generator, Mapping, Optional, Sequence
 
@@ -34,6 +35,7 @@ from airflow.provider.rabbitmq.messages.properties import (
     check_property_names,
     normalize_properties,
 )
+from airflow.provider.rabbitmq.tls import build_ssl_context, uses_tls
 
 # The message rules and adapters live in airflow.provider.rabbitmq.messages and
 # airflow.provider.rabbitmq.adapters; they are re-exported here for code that
@@ -114,20 +116,36 @@ class RabbitMQHook(BaseHook):
 
         :return: The RabbitMQ connection URI.
         """
-        if self._connection_uri:
-            return self._connection_uri
+        return self._get_connection_settings()[0]
 
-        uri = build_connection_uri(self.get_connection(self.conn_id))
+    def _get_connection_settings(self) -> tuple[str, Optional[ssl.SSLContext]]:
+        """
+        Return the URI and, when the ``ssl`` extra is set, the TLS context.
+
+        A connection_uri given to the hook has no extras, so its TLS settings come
+        from the URI alone.
+        """
+        if self._connection_uri:
+            return self._connection_uri, None
+
+        conn = self.get_connection(self.conn_id)
+        uri = build_connection_uri(conn)
         if uri is None:
             raise ValueError(
                 f"No valid connection URI found in connection {self.conn_id}. "
                 "Either provide host/port/login/password or connection_uri in the connection."
             )
-        return uri
+        if not uses_tls(conn.extra_dejson):
+            return uri, None
+        return uri, build_ssl_context(conn.extra_dejson)
 
     def _open_sync_connection(self) -> BlockingConnection:
         self.log.info("Establishing synchronous connection to RabbitMQ")
-        return pika.BlockingConnection(pika.URLParameters(self.connection_uri))
+        uri, ssl_context = self._get_connection_settings()
+        params = pika.URLParameters(uri)
+        if ssl_context is not None:
+            params.ssl_options = pika.SSLOptions(ssl_context)
+        return pika.BlockingConnection(params)
 
     @contextmanager
     def get_sync_connection_cm(self) -> Generator[BlockingConnection, None, None]:
@@ -167,7 +185,8 @@ class RabbitMQHook(BaseHook):
         """
         try:
             self.log.info("Establishing asynchronous connection to RabbitMQ")
-            return await aio_pika.connect_robust(self.connection_uri)
+            uri, ssl_context = self._get_connection_settings()
+            return await aio_pika.connect_robust(uri, ssl_context=ssl_context)
         except Exception as e:
             self.log.error("Error connecting to RabbitMQ: %s", str(e))
             raise ConnectionError(f"Failed to connect to RabbitMQ: {str(e)}") from e

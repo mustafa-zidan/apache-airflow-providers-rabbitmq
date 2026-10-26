@@ -221,6 +221,7 @@ development = [
     { name = "testcontainers" },
     { name = "tox" },
     { name = "tox-uv" },
+    { name = "trustme" },
     { name = "types-pyyaml" },
 ]
 
@@ -241,6 +242,7 @@ requires-dist = [
     { name = "testcontainers", marker = "extra == 'development'", specifier = ">=4.15.0" },
     { name = "tox", marker = "extra == 'development'", specifier = ">=4.64.8" },
     { name = "tox-uv", marker = "extra == 'development'", specifier = ">=1.36.1" },
+    { name = "trustme", marker = "extra == 'development'", specifier = ">=1.2.0" },
     { name = "types-pyyaml", marker = "extra == 'development'", specifier = ">=6.0.0" },
 ]
 provides-extras = ["development"]
@@ -3904,6 +3906,19 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/31/27/203b4dbe73cc6dadc2480e319631310981540dabe95893de983106d7b103/tox_uv_bare-1.37.0.tar.gz", hash = "sha256:97418f2febec7da57d010ca6ffed8c7d56be9d425f381b74c7fe8d0213fccad9", size = 32961, upload-time = "2026-10-11T00:33:52.786Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/52/4c/9596668bb448b868c684a3df9190103e9bc2f7de13e646628ac914f928be/tox_uv_bare-1.37.0-py3-none-any.whl", hash = "sha256:a596c0726690e2182cc85dfbc2f39e6fddacb8f7ea08bf8bace122a17397cd13", size = 22322, upload-time = "2026-10-11T00:33:51.338Z" },
+]
+
+[[package]]
+name = "trustme"
+version = "1.2.1"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "cryptography" },
+    { name = "idna" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/4b/c5/931476f4cf1cd9e736f32651005078061a50dc164a2569fb874e00eb2786/trustme-1.2.1.tar.gz", hash = "sha256:6528ba2bbc7f2db41f33825c8dd13e3e3eb9d334ba0f909713c8c3139f4ae47f", size = 26844, upload-time = "2025-01-02T01:55:32.632Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/b5/f3/c34dbabf6da5eda56fe923226769d40e11806952cd7f46655dd06e10f018/trustme-1.2.1-py3-none-any.whl", hash = "sha256:d768e5fc57c86dfc5ec9365102e9b092541cd6954b35d8c1eea01a84f35a762a", size = 16530, upload-time = "2025-01-02T01:55:30.181Z" },
 ]
 
 [[package]]

@@ -67,7 +67,7 @@ from airflow.provider.rabbitmq.hooks.rabbitmq_hook import RabbitMQHook
     - **Password**: `<RabbitMQ password>`
     - **Port**: `5672` (default RabbitMQ port)
     - **Schema**: `<vhost>` (optional; maps to RabbitMQ virtual host)
-    - **Extras (JSON)**: Optionally provide `{ "connection_uri": "amqp://user:pass@host:5672/vhost" }` to override the URI.
+    - **Extras (JSON)**: Optionally provide `{ "connection_uri": "amqp://user:pass@host:5672/vhost" }` to override the URI. Set `"ssl": true` and the `ssl_*` extras to connect over TLS, see [TLS](docs/usage.md#tls).
 
 You can now reference this connection in your DAGs using the connection ID.
 

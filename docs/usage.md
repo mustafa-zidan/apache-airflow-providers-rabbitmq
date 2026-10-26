@@ -31,6 +31,30 @@ To use the RabbitMQ provider, you need to configure a connection in Airflow.
     }
     ```
 
+### TLS
+
+Set `"ssl": true` in the **Extra** field to connect over TLS. With Host set, the hook connects with `amqps` and the port defaults to 5671. A `connection_uri` extra must use `amqps://`.
+
+```json
+{
+  "ssl": true,
+  "ssl_ca_certs": "/opt/airflow/certs/ca.pem",
+  "ssl_certfile": "/opt/airflow/certs/client.pem",
+  "ssl_keyfile": "/opt/airflow/certs/client.key",
+  "ssl_server_hostname": "rabbit.internal"
+}
+```
+
+- `ssl_ca_certs`: CA certificate file the broker certificate is verified against. Without it, the system CAs are trusted.
+- `ssl_certfile`, `ssl_keyfile`: client certificate and key, for brokers that require mutual TLS.
+- `ssl_ca_cert_pem`, `ssl_cert_pem`, `ssl_key_pem`: the same as PEM contents instead of file paths, for certificates kept in a secrets backend. Each can replace its file counterpart on its own.
+- `ssl_server_hostname`: the name the broker certificate must match, when it differs from Host (for example when connecting by IP or through a tunnel).
+- `ssl_verify`: defaults to `true`. `false` skips verifying the broker certificate and logs a warning on every connection; use it only for testing.
+
+`ssl` and `ssl_verify` must be JSON booleans. A string like `"true"` or `"yes"` raises `ValueError` rather than being guessed at.
+
+A `connection_uri` passed directly to `RabbitMQHook` doesn't read these extras.
+
 ## Operators
 
 ### RabbitMQProducerOperator

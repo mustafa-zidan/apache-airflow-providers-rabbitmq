@@ -28,7 +28,7 @@ The `RabbitMQSensor` uses the synchronous `pika` library for polling the queue.
 
 ## Security
 
-- **TLS/SSL**: The current implementation handles TLS if provided in the `connection_uri` (e.g., `amqps://`), but additional TLS configuration (like client certificates) is not yet explicitly supported in the Airflow connection extras. Tracked in [#14](https://github.com/mustafa-zidan/apache-airflow-providers-rabbitmq/issues/14).
+- **TLS/SSL**: TLS, including client certificates, is configured through the connection's Extra field, see [TLS](usage.md#tls). The connection form doesn't show these settings as fields yet ([#18](https://github.com/mustafa-zidan/apache-airflow-providers-rabbitmq/issues/18)), so they go in the Extra JSON. A client key protected by a password isn't supported.
 
 ## Airflow Version
 

@@ -1,5 +1,6 @@
 """Unit tests."""
 
+import ssl
 from contextlib import contextmanager
 from datetime import datetime, timedelta, timezone
 from unittest import mock
@@ -208,8 +209,53 @@ class TestRabbitMQHook:
         result = await self.hook.get_async_connection()
 
         # Assertions
-        mock_connect_robust.assert_called_once_with(self.connection_uri)
+        mock_connect_robust.assert_called_once_with(
+            self.connection_uri, ssl_context=None
+        )
         assert result == mock_connection
+
+    @mock.patch("airflow.provider.rabbitmq.hooks.rabbitmq_hook.BaseHook.get_connection")
+    @mock.patch("pika.BlockingConnection")
+    def test_get_sync_connection_with_tls_extras(
+        self, mock_blocking_connection, mock_get_connection
+    ) -> None:
+        """The ssl extra connects to amqps on 5671 with the context from the extras"""
+        mock_get_connection.return_value = mock.MagicMock(
+            host="rabbitmq",
+            port=None,
+            login="guest",
+            password="guest",
+            schema=None,
+            extra_dejson={"ssl": True, "ssl_server_hostname": "rabbit.internal"},
+        )
+
+        RabbitMQHook(conn_id="tls").get_sync_connection()
+
+        params = mock_blocking_connection.call_args.args[0]
+        assert params.port == 5671
+        assert params.ssl_options.context.server_hostname == "rabbit.internal"
+        mock_get_connection.assert_called_once_with("tls")
+
+    @mock.patch("airflow.provider.rabbitmq.hooks.rabbitmq_hook.BaseHook.get_connection")
+    @mock.patch("aio_pika.connect_robust")
+    async def test_get_async_connection_with_tls_extras(
+        self, mock_connect_robust, mock_get_connection
+    ) -> None:
+        mock_get_connection.return_value = mock.MagicMock(
+            host="rabbitmq",
+            port=None,
+            login=None,
+            password=None,
+            schema=None,
+            extra_dejson={"ssl": True, "ssl_verify": False},
+        )
+
+        await RabbitMQHook(conn_id="tls").get_async_connection()
+
+        uri = mock_connect_robust.call_args.args[0]
+        ssl_context = mock_connect_robust.call_args.kwargs["ssl_context"]
+        assert uri == "amqps://rabbitmq:5671"
+        assert ssl_context.verify_mode == ssl.CERT_NONE
 
     @mock.patch.object(RabbitMQHook, "get_sync_connection_cm")
     async def test_publish_sync(self, mock_get_sync_connection_cm):
