@@ -15,12 +15,14 @@ from airflow.provider.rabbitmq._compat import BaseHook
 from airflow.provider.rabbitmq.adapters.aio_pika_adapter import (
     ExchangeCache,
     build_aio_pika_message,
+    publish_aio_pika,
 )
 from airflow.provider.rabbitmq.adapters.pika_adapter import (
     build_pika_properties,
     publish_pika,
 )
 from airflow.provider.rabbitmq.connection import build_connection_uri
+from airflow.provider.rabbitmq.exceptions import MessageNotDeliveredError
 from airflow.provider.rabbitmq.messages.outgoing import (
     BatchItem,
     Body,
@@ -38,6 +40,7 @@ from airflow.provider.rabbitmq.messages.properties import (
 # imported them from the hook module.
 __all__ = [
     "MESSAGE_PROPERTIES",
+    "MessageNotDeliveredError",
     "RabbitMQHook",
     "build_aio_pika_message",
     "build_pika_properties",
@@ -56,9 +59,17 @@ class RabbitMQHook(BaseHook):
     Every publish method validates all of its messages before it connects, then
     publishes them in order over a single connection and channel.
 
+    With ``confirm`` (the default) the channel uses publisher confirms, so each
+    publish waits for the broker's ack and a nack raises ``MessageNotDeliveredError``.
+    ``mandatory`` also raises it when a message matches no queue, instead of the
+    broker dropping it.
+
     :param connection_uri: RabbitMQ connection string (e.g., "amqp://user:password@host:port/vhost").
                           If not provided, it will be retrieved from the Airflow connection.
     :param conn_id: The Airflow connection id to use. The default is "rabbitmq_default".
+    :param confirm: Wait for the broker to ack each published message. Defaults to True.
+    :param mandatory: Fail when a message matches no queue. Needs ``confirm``.
+        Defaults to False.
     """
 
     conn_name_attr = "conn_id"
@@ -67,7 +78,11 @@ class RabbitMQHook(BaseHook):
     hook_name = "RabbitMQ"
 
     def __init__(
-        self, connection_uri: Optional[str] = None, conn_id: str = default_conn_name
+        self,
+        connection_uri: Optional[str] = None,
+        conn_id: str = default_conn_name,
+        confirm: bool = True,
+        mandatory: bool = False,
     ) -> None:
         """
         Initialize RabbitMQ connection settings.
@@ -75,10 +90,16 @@ class RabbitMQHook(BaseHook):
         :param connection_uri: RabbitMQ connection string (e.g., "amqp://user:password@host:port/vhost").
                               If not provided, it will be retrieved from the Airflow connection.
         :param conn_id: The Airflow connection id to use. The default is "rabbitmq_default".
+        :param confirm: Wait for the broker to ack each published message.
+        :param mandatory: Fail when a message matches no queue. Needs ``confirm``.
+        :raises: ValueError if ``mandatory`` is set without ``confirm``.
         """
         super().__init__()
+        check_delivery_options(confirm, mandatory)
         self.conn_id = conn_id
         self._connection_uri: Optional[str] = connection_uri
+        self.confirm = confirm
+        self.mandatory = mandatory
 
     # Connections
 
@@ -116,15 +137,11 @@ class RabbitMQHook(BaseHook):
         :return: A BlockingConnection instance.
         :raises: ConnectionError if the connection cannot be established.
         """
-        conn = None
+        conn = self.get_sync_connection()
         try:
-            conn = self._open_sync_connection()
             yield conn
-        except Exception as e:
-            self.log.error("Error connecting to RabbitMQ: %s", str(e))
-            raise ConnectionError(f"Failed to connect to RabbitMQ: {str(e)}") from e
         finally:
-            if conn is not None and conn.is_open:
+            if conn.is_open:
                 self.log.info("Closing synchronous connection to RabbitMQ")
                 conn.close()
 
@@ -173,6 +190,7 @@ class RabbitMQHook(BaseHook):
         :param properties: AMQP basic properties, see ``normalize_properties``.
         :raises: ValueError if a property is unknown or invalid.
         :raises: ConnectionError if the connection cannot be established.
+        :raises: MessageNotDeliveredError if the broker doesn't accept the message.
         :raises: Exception if the message cannot be published.
         """
         self._publish_sync(
@@ -198,6 +216,8 @@ class RabbitMQHook(BaseHook):
         :raises: ValueError if a property is unknown or invalid, or if a dict item lacks 'body'.
         :raises: TypeError if an item or body is of unsupported type.
         :raises: ConnectionError if the connection cannot be established.
+        :raises: MessageNotDeliveredError if the broker doesn't accept a message; the
+            messages before it were delivered.
         :raises: Exception if publishing fails.
         """
         if not messages:
@@ -217,9 +237,11 @@ class RabbitMQHook(BaseHook):
                     "Creating channel for publishing %d message(s)", len(prepared)
                 )
                 channel: BlockingChannel = conn.channel()
+                if self.confirm:
+                    channel.confirm_delivery()
                 for index, (message, pika_properties) in enumerate(prepared, start=1):
                     self._log_publish(index, len(prepared), message)
-                    publish_pika(channel, message, pika_properties)
+                    publish_pika(channel, message, pika_properties, self.mandatory)
                 self.log.info("%d message(s) published successfully", len(prepared))
                 return len(prepared)
             except Exception as e:
@@ -244,6 +266,7 @@ class RabbitMQHook(BaseHook):
         :param properties: AMQP basic properties, see ``normalize_properties``.
         :raises: ValueError if a property is unknown or invalid.
         :raises: ConnectionError if the connection cannot be established.
+        :raises: MessageNotDeliveredError if the broker doesn't accept the message.
         :raises: Exception if the message cannot be published.
         """
         await self._publish_async(
@@ -269,6 +292,8 @@ class RabbitMQHook(BaseHook):
         :raises: ValueError if a property is unknown or invalid, or if a dict item lacks 'body'.
         :raises: TypeError if an item or body is of unsupported type.
         :raises: ConnectionError if the connection cannot be established.
+        :raises: MessageNotDeliveredError if the broker doesn't accept a message; the
+            messages before it were delivered.
         :raises: Exception if publishing fails.
         """
         if not messages:
@@ -289,12 +314,14 @@ class RabbitMQHook(BaseHook):
                 "Creating channel for publishing %d message(s) asynchronously",
                 len(prepared),
             )
-            channel: AbstractChannel = await connection.channel()
+            channel: AbstractChannel = await connection.channel(
+                publisher_confirms=self.confirm, on_return_raises=self.mandatory
+            )
             exchanges = ExchangeCache(channel)
             for index, (message, outgoing) in enumerate(prepared, start=1):
                 target = await exchanges.get(message.exchange)
                 self._log_publish(index, len(prepared), message)
-                await target.publish(outgoing, routing_key=message.routing_key)
+                await publish_aio_pika(target, message, outgoing, self.mandatory)
             self.log.info(
                 "%d message(s) published asynchronously successfully", len(prepared)
             )
@@ -318,3 +345,16 @@ class RabbitMQHook(BaseHook):
             message.exchange,
             message.routing_key,
         )
+
+
+def check_delivery_options(confirm: bool, mandatory: bool) -> None:
+    """
+    Reject ``mandatory`` without ``confirm``.
+
+    Without confirms neither client waits for the broker, so an unroutable
+    message would still be dropped without an error.
+
+    :raises: ValueError if ``mandatory`` is set and ``confirm`` is not.
+    """
+    if mandatory and not confirm:
+        raise ValueError("mandatory=True requires confirm=True")

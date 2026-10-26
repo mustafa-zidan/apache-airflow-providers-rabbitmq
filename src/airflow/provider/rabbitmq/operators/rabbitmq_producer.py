@@ -7,7 +7,10 @@ from typing import TYPE_CHECKING, Any, Optional, Sequence, Union, cast
 
 from airflow.models import BaseOperator
 
-from airflow.provider.rabbitmq.hooks.rabbitmq_hook import RabbitMQHook
+from airflow.provider.rabbitmq.hooks.rabbitmq_hook import (
+    RabbitMQHook,
+    check_delivery_options,
+)
 from airflow.provider.rabbitmq.messages.outgoing import (
     BatchItem,
     Body,
@@ -43,6 +46,10 @@ class RabbitMQProducerOperator(BaseOperator):
     :param properties: AMQP basic properties (content_type, headers, delivery_mode,
         priority, correlation_id, expiration in milliseconds, ...). Templated.
         Unknown keys raise ValueError.
+    :param confirm: Wait for the broker to ack each message, and fail the task with
+        ``MessageNotDeliveredError`` when it nacks one. Defaults to True.
+    :param mandatory: Also fail the task when a message matches no queue, instead
+        of the broker dropping it. Needs ``confirm``. Defaults to False.
     """
 
     template_fields: Sequence[str] = (
@@ -61,6 +68,8 @@ class RabbitMQProducerOperator(BaseOperator):
         conn_id: str = "rabbitmq_default",
         use_async: bool = False,
         properties: Optional[dict[str, Any]] = None,
+        confirm: bool = True,
+        mandatory: bool = False,
         **kwargs: Any,
     ) -> None:
         """
@@ -72,17 +81,22 @@ class RabbitMQProducerOperator(BaseOperator):
         :param conn_id: The Airflow connection id to use. Default is "rabbitmq_default".
         :param use_async: Flag to determine whether to use async messaging. Defaults to False.
         :param properties: AMQP basic properties for the message.
+        :param confirm: Wait for the broker to ack each message. Defaults to True.
+        :param mandatory: Fail when a message matches no queue. Defaults to False.
         """
         super().__init__(**kwargs)
         # Values can be templates, so only the names are checked here; the hook
         # validates the rendered values.
         check_message_property_names(message, properties)
+        check_delivery_options(confirm, mandatory)
         self.conn_id: str = conn_id
         self.message: Union[Body, Sequence[BatchItem]] = message
         self.exchange: str = exchange
         self.routing_key: str = routing_key
         self.use_async: bool = use_async
         self.properties: Optional[dict[str, Any]] = properties
+        self.confirm: bool = confirm
+        self.mandatory: bool = mandatory
 
     def execute(self, context: Context) -> int:
         """
@@ -93,7 +107,9 @@ class RabbitMQProducerOperator(BaseOperator):
         :param context: Airflow's execution context dictionary.
         :return: Number of messages published.
         """
-        hook = RabbitMQHook(conn_id=self.conn_id)
+        hook = RabbitMQHook(
+            conn_id=self.conn_id, confirm=self.confirm, mandatory=self.mandatory
+        )
         message = self.message
         if isinstance(message, (str, bytes)):
             return self._publish_one(hook, message)

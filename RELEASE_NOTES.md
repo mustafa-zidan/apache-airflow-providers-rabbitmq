@@ -2,7 +2,12 @@
 
 ## Unreleased
 
+### Behaviour Changes
+- Publishing waits for the broker to accept each message. `RabbitMQProducerOperator` and `RabbitMQHook` take `confirm` (default `True`), which turns on publisher confirms, and the task fails with `MessageNotDeliveredError` when the broker nacks a message. The async path already used confirms; the sync path didn't, so a sync task that published into a full `reject-publish` queue used to succeed with the message lost, and now fails. Pass `confirm=False` for the old behaviour ([#13](https://github.com/mustafa-zidan/apache-airflow-providers-rabbitmq/issues/13)).
+- `RabbitMQHook.get_sync_connection_cm` raises `ConnectionError` only when the connection can't be opened. An error raised inside the `with` block now propagates as itself, so a sync publish to a missing exchange raises pika's `ChannelClosedByBroker` instead of `ConnectionError`. `RabbitMQSensor` now fails the task on a `max_xcom_bytes` or deserialize error, as documented, instead of logging it as a connection error and poking again.
+
 ### Features
+- `mandatory=True` fails the task with `MessageNotDeliveredError` when a message matches no queue, instead of the broker dropping it. It needs `confirm=True`. Errors from pika and aio-pika are mapped onto `MessageNotDeliveredError` (`airflow.provider.rabbitmq.exceptions`), whose `reason` is `"nacked"` or `"unroutable"` ([#13](https://github.com/mustafa-zidan/apache-airflow-providers-rabbitmq/issues/13)).
 - `RabbitMQProducerOperator` takes `properties`, a templated dict of AMQP basic properties (`content_type`, `headers`, `delivery_mode`, `priority`, `correlation_id`, `expiration`, ...). `publish_sync` and `publish_async` take the same argument and convert it for pika and aio-pika, so `expiration` is milliseconds on both paths. Unknown keys and invalid values raise `ValueError` before connecting. `message` also accepts `bytes` ([#11](https://github.com/mustafa-zidan/apache-airflow-providers-rabbitmq/issues/11)).
 - `RabbitMQProducerOperator` publishes a list of messages in order over one connection and channel, and returns how many it published. Items are `str`, `bytes`, or dicts with `body` and optional `routing_key`, `exchange` and `properties` overrides; item properties merge over the operator's. Every item is validated before connecting, and an empty list publishes nothing. `RabbitMQHook` has `publish_batch_sync` and `publish_batch_async` for the same ([#12](https://github.com/mustafa-zidan/apache-airflow-providers-rabbitmq/issues/12)).
 

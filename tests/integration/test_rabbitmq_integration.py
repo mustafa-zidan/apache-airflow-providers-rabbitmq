@@ -20,6 +20,7 @@ try:
 except (ImportError, DockerException, OSError):
     DOCKER_AVAILABLE = False
 
+from airflow.provider.rabbitmq.exceptions import MessageNotDeliveredError
 from airflow.provider.rabbitmq.operators.rabbitmq_producer import (
     RabbitMQProducerOperator,
 )
@@ -40,6 +41,8 @@ class TestRabbitMQIntegration:
     named_exchange: str = "test_exchange"
     named_exchange_queue: str = "test_exchange_queue"
     named_exchange_routing_key: str = "test_exchange_key"
+    unbound_exchange: str = "test_unbound_exchange"
+    full_queue: str = "test_full_queue"
 
     @pytest.fixture(scope="class", autouse=True)
     @classmethod
@@ -66,6 +69,14 @@ class TestRabbitMQIntegration:
                 queue=cls.named_exchange_queue,
                 exchange=cls.named_exchange,
                 routing_key=cls.named_exchange_routing_key,
+            )
+            channel.exchange_declare(
+                exchange=cls.unbound_exchange, exchange_type="direct"
+            )
+            channel.queue_declare(
+                queue=cls.full_queue,
+                durable=True,
+                arguments={"x-max-length": 0, "x-overflow": "reject-publish"},
             )
             connection.close()  # no need for this connection anymore
 
@@ -291,6 +302,88 @@ class TestRabbitMQIntegration:
 
         assert self._get_message(self.queue) == b"to default queue"
         assert self._get_message(self.named_exchange_queue) == b"to named exchange"
+
+    @pytest.mark.parametrize("use_async", [False, True])
+    def test_unroutable_mandatory_message_fails(self, use_async: bool) -> None:
+        """mandatory=True fails the task when no queue is bound for the key"""
+        with pytest.raises(MessageNotDeliveredError) as excinfo:
+            RabbitMQProducerOperator(
+                task_id=self.task_id,
+                conn_id=self.conn_id,
+                message="nowhere to go",
+                exchange=self.unbound_exchange,
+                routing_key="no_binding",
+                use_async=use_async,
+                mandatory=True,
+            ).execute({})
+
+        assert excinfo.value.reason == MessageNotDeliveredError.UNROUTABLE
+
+    @pytest.mark.parametrize("use_async", [False, True])
+    def test_unroutable_message_without_mandatory_is_dropped(
+        self, use_async: bool
+    ) -> None:
+        """Without mandatory the broker acks and drops an unroutable message"""
+        count = RabbitMQProducerOperator(
+            task_id=self.task_id,
+            conn_id=self.conn_id,
+            message="dropped",
+            exchange=self.unbound_exchange,
+            routing_key="no_binding",
+            use_async=use_async,
+        ).execute({})
+
+        assert count == 1
+
+    @pytest.mark.parametrize("use_async", [False, True])
+    def test_rejected_message_fails(self, use_async: bool) -> None:
+        """A queue that rejects publishes nacks the message and fails the task"""
+        with pytest.raises(MessageNotDeliveredError) as excinfo:
+            RabbitMQProducerOperator(
+                task_id=self.task_id,
+                conn_id=self.conn_id,
+                message="no room",
+                exchange="",
+                routing_key=self.full_queue,
+                use_async=use_async,
+            ).execute({})
+
+        assert excinfo.value.reason == MessageNotDeliveredError.NACKED
+
+    @pytest.mark.parametrize("use_async", [False, True])
+    def test_rejected_message_without_confirm_succeeds(self, use_async: bool) -> None:
+        """confirm=False doesn't wait for the broker, so a nack goes unnoticed"""
+        count = RabbitMQProducerOperator(
+            task_id=self.task_id,
+            conn_id=self.conn_id,
+            message="no room",
+            exchange="",
+            routing_key=self.full_queue,
+            use_async=use_async,
+            confirm=False,
+        ).execute({})
+
+        assert count == 1
+
+    def test_rejected_batch_message_stops_the_batch(self) -> None:
+        """A nack partway through fails the batch after the earlier messages landed"""
+        queue = "confirm_batch_queue"
+        connection = pika.BlockingConnection(pika.URLParameters(self.connection_uri))
+        try:
+            connection.channel().queue_declare(queue=queue, durable=True)
+        finally:
+            connection.close()
+
+        with pytest.raises(MessageNotDeliveredError):
+            RabbitMQProducerOperator(
+                task_id=self.task_id,
+                conn_id=self.conn_id,
+                message=["first", {"body": "rejected", "routing_key": self.full_queue}],
+                exchange="",
+                routing_key=queue,
+            ).execute({})
+
+        assert self._get_message(queue) == b"first"
 
     def _message_count(self, queue: str) -> int:
         """Ready messages on a queue, polled briefly while the broker catches up."""
