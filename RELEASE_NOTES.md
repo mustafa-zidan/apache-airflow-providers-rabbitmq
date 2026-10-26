@@ -1,19 +1,31 @@
 # Apache Airflow Provider for RabbitMQ - Release Notes
 
-## Unreleased
+## Version 5.1.0 (2026-10-26)
 
 ### Breaking Changes
 - `RabbitMQHook` no longer takes `connection_uri`. Every hook, operator, sensor and trigger connects through `conn_id`. To use a raw URI, put it in the connection's Extra field as `{"connection_uri": "amqp://..."}`, or define the connection with an `AIRFLOW_CONN_<CONN_ID>` environment variable. The read-only `connection_uri` property still returns the URI built from the connection.
+
+### Migration Guide
+```python
+# Before
+hook = RabbitMQHook(connection_uri="amqp://user:pass@host:5672/")
+
+# After: create a connection with Extra {"connection_uri": "amqp://user:pass@host:5672/"}
+hook = RabbitMQHook(conn_id="my_rabbitmq")
+```
 
 ### Behaviour Changes
 - Publishing waits for the broker to accept each message. `RabbitMQProducerOperator` and `RabbitMQHook` take `confirm` (default `True`), which turns on publisher confirms, and the task fails with `MessageNotDeliveredError` when the broker nacks a message. The async path already used confirms; the sync path didn't, so a sync task that published into a full `reject-publish` queue used to succeed with the message lost, and now fails. Pass `confirm=False` for the old behaviour ([#13](https://github.com/mustafa-zidan/apache-airflow-providers-rabbitmq/issues/13)).
 - `RabbitMQHook.get_sync_connection_cm` raises `ConnectionError` only when the connection can't be opened. An error raised inside the `with` block now propagates as itself, so a sync publish to a missing exchange raises pika's `ChannelClosedByBroker` instead of `ConnectionError`. `RabbitMQSensor` now fails the task on a `max_xcom_bytes` or deserialize error, as documented, instead of logging it as a connection error and poking again.
 
 ### Features
+- `RabbitMQSensor` pushes the message it receives to XCom instead of logging and discarding it. The value is the same dict `RabbitMQTrigger` yields: `body` (UTF-8, or base64), `body_encoding`, `exchange`, `routing_key`, `redelivered`, `content_type`, `message_id`, `correlation_id` and `headers`. `deserialize="json"` parses the body, and `max_xcom_bytes` fails the task rather than storing a large body in the metadata database. The sensor acks only once the payload is built, so a body that fails to parse or is too large stays on the queue, and `auto_ack=False` returns the message and requeues it ([#10](https://github.com/mustafa-zidan/apache-airflow-providers-rabbitmq/issues/10)).
 - TLS is configured through the connection's Extra JSON: `ssl`, `ssl_ca_certs`, `ssl_certfile`, `ssl_keyfile`, `ssl_verify` and `ssl_server_hostname`, plus `ssl_ca_cert_pem`, `ssl_cert_pem` and `ssl_key_pem` for certificates kept as PEM contents. Client certificates make mutual TLS work. With `ssl` set, a connection built from Host connects with `amqps` and defaults to port 5671; before, it always used `amqp`. Both the sync and async paths use the same `SSLContext` ([#14](https://github.com/mustafa-zidan/apache-airflow-providers-rabbitmq/issues/14)).
 - `mandatory=True` fails the task with `MessageNotDeliveredError` when a message matches no queue, instead of the broker dropping it. It needs `confirm=True`. Errors from pika and aio-pika are mapped onto `MessageNotDeliveredError` (`airflow.provider.rabbitmq.exceptions`), whose `reason` is `"nacked"` or `"unroutable"` ([#13](https://github.com/mustafa-zidan/apache-airflow-providers-rabbitmq/issues/13)).
 - `RabbitMQProducerOperator` takes `properties`, a templated dict of AMQP basic properties (`content_type`, `headers`, `delivery_mode`, `priority`, `correlation_id`, `expiration`, ...). `publish_sync` and `publish_async` take the same argument and convert it for pika and aio-pika, so `expiration` is milliseconds on both paths. Unknown keys and invalid values raise `ValueError` before connecting. `message` also accepts `bytes` ([#11](https://github.com/mustafa-zidan/apache-airflow-providers-rabbitmq/issues/11)).
 - `RabbitMQProducerOperator` publishes a list of messages in order over one connection and channel, and returns how many it published. Items are `str`, `bytes`, or dicts with `body` and optional `routing_key`, `exchange` and `properties` overrides; item properties merge over the operator's. Every item is validated before connecting, and an empty list publishes nothing. `RabbitMQHook` has `publish_batch_sync` and `publish_batch_async` for the same ([#12](https://github.com/mustafa-zidan/apache-airflow-providers-rabbitmq/issues/12)).
+
+## Version 5.0.1 (2026-10-14)
 
 ### Bug Fixes
 - `RabbitMQTrigger` yields the return value of `apply_function` as the event payload, as Kafka's `AwaitMessageTrigger` does. A falsy return still skips the message, and `True` still yields the standard payload ([#27](https://github.com/mustafa-zidan/apache-airflow-providers-rabbitmq/issues/27)).
