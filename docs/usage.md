@@ -45,6 +45,8 @@ The `RabbitMQProducerOperator` is used to publish messages to a RabbitMQ exchang
 - `conn_id`: (Optional) Airflow connection ID. Default is `rabbitmq_default`. To use a raw URI, set `connection_uri` in the connection's Extra field.
 - `use_async`: (Optional) Boolean flag to use asynchronous publishing via `aio-pika`. Default is `False`.
 - `properties`: (Optional) AMQP basic properties for the message, as a dict. (Templated) Unknown keys raise `ValueError` when the DAG is parsed; values are checked after rendering, before connecting.
+- `confirm`: (Optional) Wait for the broker to ack each message, and fail the task when it doesn't, see [Delivery checks](#delivery-checks). Default is `True`.
+- `mandatory`: (Optional) Also fail the task when a message matches no queue. Needs `confirm`. Default is `False`.
 
 #### Message properties
 
@@ -95,6 +97,26 @@ with DAG("fan_out", render_template_as_native_obj=True, ...):
         exchange="events",
         routing_key="unknown",
     )
+```
+
+#### Delivery checks
+
+With `confirm=True` (the default) the channel uses publisher confirms, on both `use_async` paths. Each publish waits for the broker's ack, and the task fails with `MessageNotDeliveredError` (from `airflow.provider.rabbitmq.exceptions`) when the broker refuses the message: a full queue with `x-overflow=reject-publish`, for example. `reason` on the error is `"nacked"`, and `exchange` and `routing_key` say which message it was.
+
+A message that matches no queue is not refused: the broker acks it and drops it. Set `mandatory=True` to fail the task with `reason="unroutable"` instead. `mandatory` needs `confirm`, because without confirms neither client waits for the broker's reply; `confirm=False, mandatory=True` raises `ValueError` when the DAG is parsed.
+
+`confirm=False` publishes without waiting, which is faster for large batches, and the task succeeds even if the broker drops every message. A missing named exchange still fails the task on both paths.
+
+In a batch the error stops publishing at the refused message. The messages before it are already on the broker.
+
+```python
+RabbitMQProducerOperator(
+    task_id="publish_order",
+    message='{"id": 1}',
+    exchange="orders",
+    routing_key="created",
+    mandatory=True,  # fail if no queue is bound for "created"
+)
 ```
 
 #### Example
@@ -188,4 +210,10 @@ from airflow.provider.rabbitmq.hooks.rabbitmq_hook import RabbitMQHook
 
 hook = RabbitMQHook(conn_id="rabbitmq_default")
 hook.publish_sync(message="Sync message", exchange="", routing_key="test_queue")
+```
+
+Every publish method takes `confirm` and `mandatory` as keyword arguments, with the same defaults and errors as the operator.
+
+```python
+hook.publish_batch_sync(["a", "b"], exchange="events", routing_key="row", mandatory=True)
 ```

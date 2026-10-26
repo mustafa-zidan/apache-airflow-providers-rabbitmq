@@ -11,7 +11,7 @@ The `RabbitMQProducerOperator` supports both synchronous and asynchronous messag
 
 ## Batch Delivery
 
-A batch is not atomic. If publishing fails partway through, the messages before the failure are already on the broker, the task fails, and a retry publishes the whole list again. Delivery is at-least-once, so consumers should tolerate duplicates (for example by `message_id`). Without publisher confirms ([#13](https://github.com/mustafa-zidan/apache-airflow-providers-rabbitmq/issues/13)) the task also can't tell whether the broker accepted every message, only that they were sent.
+A batch is not atomic. If publishing fails partway through, the messages before the failure are already on the broker, the task fails, and a retry publishes the whole list again. Delivery is at-least-once, so consumers should tolerate duplicates (for example by `message_id`). With `confirm=False` the task also can't tell whether the broker accepted every message, only that they were sent.
 
 ## Sensor Behavior
 

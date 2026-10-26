@@ -22,6 +22,7 @@ class TestRabbitMQProducerOperator:
     exchange = "test_exchange"
     routing_key = "test_routing_key"
     task_id = "test_task_id"
+    delivery = {"confirm": True, "mandatory": False}
 
     async def test_init(self):
         """Test operator initialization"""
@@ -39,6 +40,8 @@ class TestRabbitMQProducerOperator:
         assert operator1.exchange == self.exchange
         assert operator1.routing_key == self.routing_key
         assert operator1.use_async is False
+        assert operator1.confirm is True
+        assert operator1.mandatory is False
         assert isinstance(operator1, BaseOperator)
 
         # Test with conn_id
@@ -134,7 +137,11 @@ class TestRabbitMQProducerOperator:
         operator.execute({})
 
         mock_publish_sync.assert_called_once_with(
-            b"binary", self.exchange, self.routing_key, properties=properties
+            b"binary",
+            self.exchange,
+            self.routing_key,
+            properties=properties,
+            **self.delivery,
         )
 
     @mock.patch.object(RabbitMQHook, "publish_sync")
@@ -160,7 +167,11 @@ class TestRabbitMQProducerOperator:
         # Assertions
         mock_hook_init.assert_called_once_with(conn_id=self.conn_id)
         mock_publish_sync.assert_called_once_with(
-            self.message, self.exchange, self.routing_key, properties=None
+            self.message,
+            self.exchange,
+            self.routing_key,
+            properties=None,
+            **self.delivery,
         )
 
     @mock.patch.object(asyncio, "run")
@@ -215,7 +226,11 @@ class TestRabbitMQProducerOperator:
         # Assertions
         mock_hook_init.assert_called_once_with(conn_id=self.conn_id)
         mock_publish_sync.assert_called_once_with(
-            self.message, self.exchange, self.routing_key, properties=None
+            self.message,
+            self.exchange,
+            self.routing_key,
+            properties=None,
+            **self.delivery,
         )
 
     @mock.patch.object(RabbitMQHook, "publish_batch_sync", return_value=2)
@@ -237,6 +252,7 @@ class TestRabbitMQProducerOperator:
             self.exchange,
             self.routing_key,
             properties={"delivery_mode": 2},
+            **self.delivery,
         )
 
     @mock.patch.object(RabbitMQHook, "publish_batch_async", new_callable=mock.AsyncMock)
@@ -253,8 +269,50 @@ class TestRabbitMQProducerOperator:
 
         assert operator.execute({}) == 3
         mock_publish_batch_async.assert_awaited_once_with(
-            ("a", "b", "c"), self.exchange, self.routing_key, properties=None
+            ("a", "b", "c"),
+            self.exchange,
+            self.routing_key,
+            properties=None,
+            **self.delivery,
         )
+
+    @pytest.mark.parametrize("use_async", [False, True])
+    def test_execute_passes_delivery_options(self, use_async: bool) -> None:
+        """confirm and mandatory reach the hook on both paths"""
+        method = "publish_async" if use_async else "publish_sync"
+        operator = RabbitMQProducerOperator(
+            task_id=self.task_id,
+            message=self.message,
+            exchange=self.exchange,
+            routing_key=self.routing_key,
+            use_async=use_async,
+            mandatory=True,
+        )
+
+        with (
+            mock.patch.object(RabbitMQHook, "__init__", return_value=None),
+            mock.patch.object(
+                RabbitMQHook,
+                method,
+                new_callable=mock.AsyncMock if use_async else mock.MagicMock,
+            ) as publish,
+        ):
+            operator.execute({})
+
+        assert publish.call_args.kwargs["confirm"] is True
+        assert publish.call_args.kwargs["mandatory"] is True
+
+    def test_init_rejects_mandatory_without_confirm(self):
+        """mandatory can't be honoured without confirms, so the DAG fails to parse"""
+        with pytest.raises(ValueError, match="mandatory=True requires confirm=True"):
+            RabbitMQProducerOperator(
+                task_id=self.task_id,
+                message=self.message,
+                exchange=self.exchange,
+                routing_key=self.routing_key,
+                confirm=False,
+                mandatory=True,
+            )
 
     @mock.patch.object(RabbitMQHook, "publish_batch_sync")
     @mock.patch.object(RabbitMQHook, "__init__", return_value=None)

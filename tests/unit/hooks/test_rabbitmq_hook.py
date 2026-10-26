@@ -8,8 +8,9 @@ import aio_pika
 import aiormq
 import pika
 import pytest
-from pika.adapters.blocking_connection import BlockingConnection
+from pika.adapters.blocking_connection import BlockingConnection, ReturnedMessage
 
+from airflow.provider.rabbitmq.exceptions import MessageNotDeliveredError
 from airflow.provider.rabbitmq.hooks.rabbitmq_hook import (
     RabbitMQHook,
     build_aio_pika_message,
@@ -173,6 +174,25 @@ class TestRabbitMQHook:
         mock_blocking_connection.assert_called_once_with("mocked_params")
         mock_connection.close.assert_called_once()
 
+    @mock.patch("pika.BlockingConnection")
+    def test_get_sync_connection_cm_lets_body_errors_through(
+        self, mock_blocking_connection: mock.MagicMock
+    ) -> None:
+        """Only opening the connection is reported as ConnectionError"""
+        mock_blocking_connection.return_value.is_open = True
+
+        with pytest.raises(KeyError):
+            with self.hook.get_sync_connection_cm():
+                raise KeyError("not a connection problem")
+
+        mock_blocking_connection.return_value.close.assert_called_once()
+
+    @mock.patch("pika.BlockingConnection", side_effect=OSError("refused"))
+    def test_get_sync_connection_cm_wraps_connect_errors(self, _) -> None:
+        with pytest.raises(ConnectionError, match="refused"):
+            with self.hook.get_sync_connection_cm():
+                pass  # pragma: no cover
+
     @mock.patch("aio_pika.connect_robust")
     async def test_get_async_connection(self, mock_connect_robust):
         """Test get_async_connection method"""
@@ -213,12 +233,70 @@ class TestRabbitMQHook:
         # Assertions
         mock_get_sync_connection_cm.assert_called_once()
         mock_connection.channel.assert_called_once()
+        mock_channel.confirm_delivery.assert_called_once_with()
         mock_channel.basic_publish.assert_called_once_with(
             exchange=exchange,
             routing_key=routing_key,
             body=message.encode(),
             properties=pika.BasicProperties(),
+            mandatory=False,
         )
+
+    @mock.patch.object(RabbitMQHook, "get_sync_connection_cm")
+    def test_publish_sync_without_confirm(
+        self, mock_get_sync_connection_cm: mock.MagicMock
+    ) -> None:
+        mock_connection = mock.MagicMock(spec=BlockingConnection)
+        mock_get_sync_connection_cm.return_value.__enter__.return_value = (
+            mock_connection
+        )
+
+        self.hook.publish_sync("m", "ex", "key", confirm=False)
+
+        channel = mock_connection.channel.return_value
+        channel.confirm_delivery.assert_not_called()
+        channel.basic_publish.assert_called_once()
+
+    @pytest.mark.parametrize(
+        "error, reason",
+        [
+            (pika.exceptions.UnroutableError, MessageNotDeliveredError.UNROUTABLE),
+            (pika.exceptions.NackError, MessageNotDeliveredError.NACKED),
+        ],
+    )
+    @mock.patch.object(RabbitMQHook, "get_sync_connection_cm")
+    def test_publish_sync_raises_when_broker_refuses(
+        self, mock_get_sync_connection_cm: mock.MagicMock, error, reason
+    ) -> None:
+        """pika's confirm errors become MessageNotDeliveredError"""
+        mock_connection = mock.MagicMock(spec=BlockingConnection)
+        mock_get_sync_connection_cm.return_value.__enter__.return_value = (
+            mock_connection
+        )
+        returned = ReturnedMessage(
+            pika.spec.Basic.Return(312, "NO_ROUTE", "ex", "key"),
+            pika.BasicProperties(),
+            b"m",
+        )
+        channel = mock_connection.channel.return_value
+        channel.basic_publish.side_effect = error([returned])
+
+        with pytest.raises(MessageNotDeliveredError) as excinfo:
+            self.hook.publish_sync("m", "ex", "key", mandatory=True)
+
+        assert excinfo.value.reason == reason
+        assert (excinfo.value.exchange, excinfo.value.routing_key) == ("ex", "key")
+        assert isinstance(excinfo.value.__cause__, error)
+        assert channel.basic_publish.call_args.kwargs["mandatory"] is True
+
+    @mock.patch.object(RabbitMQHook, "get_sync_connection_cm")
+    def test_publish_sync_rejects_mandatory_without_confirm(
+        self, mock_get_sync_connection_cm: mock.MagicMock
+    ) -> None:
+        with pytest.raises(ValueError, match="mandatory=True requires confirm=True"):
+            self.hook.publish_sync("m", "ex", "key", confirm=False, mandatory=True)
+
+        mock_get_sync_connection_cm.assert_not_called()
 
     @mock.patch.object(RabbitMQHook, "get_sync_connection_cm")
     async def test_publish_sync_with_bytes_and_properties(
@@ -330,7 +408,10 @@ class TestRabbitMQHook:
         published, kwargs = named_exchange.publish.await_args
         assert published[0].body == b"test message"
         assert published[0].delivery_mode == aio_pika.DeliveryMode.NOT_PERSISTENT
-        assert kwargs == {"routing_key": "test_key"}
+        assert kwargs == {"routing_key": "test_key", "mandatory": False}
+        mock_get_async_connection.return_value.channel.assert_awaited_once_with(
+            publisher_confirms=True, on_return_raises=False
+        )
         mock_channel.default_exchange.publish.assert_not_awaited()
         mock_get_async_connection.return_value.close.assert_awaited_once()
 
@@ -346,7 +427,7 @@ class TestRabbitMQHook:
         mock_channel.get_exchange.assert_not_awaited()
         mock_channel.default_exchange.publish.assert_awaited_once()
         _, kwargs = mock_channel.default_exchange.publish.await_args
-        assert kwargs == {"routing_key": "test_queue"}
+        assert kwargs == {"routing_key": "test_queue", "mandatory": False}
         mock_get_async_connection.return_value.close.assert_awaited_once()
 
     @mock.patch.object(RabbitMQHook, "get_async_connection")
@@ -373,6 +454,70 @@ class TestRabbitMQHook:
     ) -> None:
         with pytest.raises(ValueError, match="priority"):
             await self.hook.publish_async("m", "", "q", properties={"priority": -1})
+
+        mock_get_async_connection.assert_not_called()
+
+    @mock.patch.object(RabbitMQHook, "get_async_connection")
+    async def test_publish_async_delivery_options_open_the_channel(
+        self, mock_get_async_connection: mock.MagicMock
+    ) -> None:
+        mock_channel = self._mock_async_connection(mock_get_async_connection)
+
+        await self.hook.publish_async("m", "", "q", confirm=False)
+        await self.hook.publish_async("m", "", "q", mandatory=True)
+
+        channel = mock_get_async_connection.return_value.channel
+        assert channel.await_args_list == [
+            mock.call(publisher_confirms=False, on_return_raises=False),
+            mock.call(publisher_confirms=True, on_return_raises=True),
+        ]
+        last_publish = mock_channel.default_exchange.publish.await_args
+        assert last_publish.kwargs["mandatory"] is True
+
+    @pytest.mark.parametrize(
+        "error, reason",
+        [
+            (
+                aio_pika.exceptions.PublishError(
+                    aiormq.abc.DeliveredMessage(
+                        delivery=aiormq.spec.Basic.Return(
+                            reply_code=312, reply_text="NO_ROUTE", routing_key="q"
+                        ),
+                        header=None,
+                        body=b"m",
+                        channel=None,
+                    ),
+                    None,
+                ),
+                MessageNotDeliveredError.UNROUTABLE,
+            ),
+            (
+                aio_pika.exceptions.DeliveryError(None, aiormq.spec.Basic.Nack()),
+                MessageNotDeliveredError.NACKED,
+            ),
+        ],
+    )
+    @mock.patch.object(RabbitMQHook, "get_async_connection")
+    async def test_publish_async_raises_when_broker_refuses(
+        self, mock_get_async_connection: mock.MagicMock, error, reason
+    ) -> None:
+        """aio-pika's confirm errors become MessageNotDeliveredError"""
+        mock_channel = self._mock_async_connection(mock_get_async_connection)
+        mock_channel.default_exchange.publish.side_effect = error
+
+        with pytest.raises(MessageNotDeliveredError) as excinfo:
+            await self.hook.publish_async("m", "", "q", mandatory=True)
+
+        assert excinfo.value.reason == reason
+        assert excinfo.value.__cause__ is error
+        mock_get_async_connection.return_value.close.assert_awaited_once()
+
+    @mock.patch.object(RabbitMQHook, "get_async_connection")
+    async def test_publish_async_rejects_mandatory_without_confirm(
+        self, mock_get_async_connection: mock.MagicMock
+    ) -> None:
+        with pytest.raises(ValueError, match="mandatory=True requires confirm=True"):
+            await self.hook.publish_async("m", "", "q", confirm=False, mandatory=True)
 
         mock_get_async_connection.assert_not_called()
 
@@ -452,13 +597,16 @@ class TestRabbitMQHook:
         mock_get_async_connection.return_value.channel.assert_awaited_once()
         default_publishes = mock_channel.default_exchange.publish.await_args_list
         assert [(c.args[0].body, c.kwargs) for c in default_publishes] == [
-            (b"a", {"routing_key": "q"}),
-            (b"c", {"routing_key": "q"}),
+            (b"a", {"routing_key": "q", "mandatory": False}),
+            (b"c", {"routing_key": "q", "mandatory": False}),
         ]
         mock_channel.get_exchange.assert_awaited_once_with("ex", ensure=True)
         named_publish = mock_channel.get_exchange.return_value.publish
         assert named_publish.await_args.args[0].body == b"b"
-        assert named_publish.await_args.kwargs == {"routing_key": "rk"}
+        assert named_publish.await_args.kwargs == {
+            "routing_key": "rk",
+            "mandatory": False,
+        }
         mock_get_async_connection.return_value.close.assert_awaited_once()
 
     @mock.patch.object(RabbitMQHook, "get_async_connection")
