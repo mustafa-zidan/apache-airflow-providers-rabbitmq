@@ -212,8 +212,9 @@ hook = RabbitMQHook(conn_id="rabbitmq_default")
 hook.publish_sync(message="Sync message", exchange="", routing_key="test_queue")
 ```
 
-Every publish method takes `confirm` and `mandatory` as keyword arguments, with the same defaults and errors as the operator.
+`confirm` and `mandatory` are hook arguments, with the same defaults and errors as the operator, and apply to every publish method.
 
 ```python
-hook.publish_batch_sync(["a", "b"], exchange="events", routing_key="row", mandatory=True)
+hook = RabbitMQHook(conn_id="rabbitmq_default", mandatory=True)
+hook.publish_batch_sync(["a", "b"], exchange="events", routing_key="row")
 ```

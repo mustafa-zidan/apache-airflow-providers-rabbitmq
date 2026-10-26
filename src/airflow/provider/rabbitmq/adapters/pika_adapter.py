@@ -8,7 +8,7 @@ import pika
 from pika.adapters.blocking_connection import BlockingChannel
 from pika.exceptions import NackError, UnroutableError
 
-from airflow.provider.rabbitmq.exceptions import MessageNotDeliveredError
+from airflow.provider.rabbitmq.exceptions import raise_not_delivered
 from airflow.provider.rabbitmq.messages.outgoing import OutgoingMessage
 from airflow.provider.rabbitmq.messages.properties import normalize_properties
 
@@ -34,7 +34,9 @@ def publish_pika(
     :raises: MessageNotDeliveredError if the broker nacks the message, or returns
         it as unroutable when ``mandatory`` is set.
     """
-    try:
+    with raise_not_delivered(
+        message.exchange, message.routing_key, UnroutableError, NackError
+    ):
         channel.basic_publish(
             exchange=message.exchange,
             routing_key=message.routing_key,
@@ -42,11 +44,3 @@ def publish_pika(
             properties=properties,
             mandatory=mandatory,
         )
-    except UnroutableError as e:
-        raise MessageNotDeliveredError(
-            MessageNotDeliveredError.UNROUTABLE, message.exchange, message.routing_key
-        ) from e
-    except NackError as e:
-        raise MessageNotDeliveredError(
-            MessageNotDeliveredError.NACKED, message.exchange, message.routing_key
-        ) from e

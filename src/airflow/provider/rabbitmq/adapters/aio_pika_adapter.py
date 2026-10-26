@@ -9,7 +9,7 @@ import aio_pika
 from aio_pika.abc import AbstractChannel, AbstractExchange
 from aio_pika.exceptions import DeliveryError, PublishError
 
-from airflow.provider.rabbitmq.exceptions import MessageNotDeliveredError
+from airflow.provider.rabbitmq.exceptions import raise_not_delivered
 from airflow.provider.rabbitmq.messages.outgoing import Body, OutgoingMessage, to_bytes
 from airflow.provider.rabbitmq.messages.properties import normalize_properties
 
@@ -52,18 +52,12 @@ async def publish_aio_pika(
     :raises: MessageNotDeliveredError if the broker nacks the message, or returns
         it as unroutable when ``mandatory`` is set.
     """
-    try:
+    with raise_not_delivered(
+        message.exchange, message.routing_key, PublishError, DeliveryError
+    ):
         await exchange.publish(
             outgoing, routing_key=message.routing_key, mandatory=mandatory
         )
-    except PublishError as e:  # a DeliveryError raised for a Basic.Return
-        raise MessageNotDeliveredError(
-            MessageNotDeliveredError.UNROUTABLE, message.exchange, message.routing_key
-        ) from e
-    except DeliveryError as e:
-        raise MessageNotDeliveredError(
-            MessageNotDeliveredError.NACKED, message.exchange, message.routing_key
-        ) from e
 
 
 class ExchangeCache:  # pylint: disable=too-few-public-methods

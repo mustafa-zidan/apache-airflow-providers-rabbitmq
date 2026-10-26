@@ -22,7 +22,6 @@ class TestRabbitMQProducerOperator:
     exchange = "test_exchange"
     routing_key = "test_routing_key"
     task_id = "test_task_id"
-    delivery = {"confirm": True, "mandatory": False}
 
     async def test_init(self):
         """Test operator initialization"""
@@ -141,7 +140,6 @@ class TestRabbitMQProducerOperator:
             self.exchange,
             self.routing_key,
             properties=properties,
-            **self.delivery,
         )
 
     @mock.patch.object(RabbitMQHook, "publish_sync")
@@ -165,13 +163,14 @@ class TestRabbitMQProducerOperator:
         operator.execute(context)
 
         # Assertions
-        mock_hook_init.assert_called_once_with(conn_id=self.conn_id)
+        mock_hook_init.assert_called_once_with(
+            conn_id=self.conn_id, confirm=True, mandatory=False
+        )
         mock_publish_sync.assert_called_once_with(
             self.message,
             self.exchange,
             self.routing_key,
             properties=None,
-            **self.delivery,
         )
 
     @mock.patch.object(asyncio, "run")
@@ -195,7 +194,9 @@ class TestRabbitMQProducerOperator:
         operator.execute(context)
 
         # Assertions
-        mock_hook_init.assert_called_once_with(conn_id=self.conn_id)
+        mock_hook_init.assert_called_once_with(
+            conn_id=self.conn_id, confirm=True, mandatory=False
+        )
         mock_asyncio_run.assert_called_once()
 
     @mock.patch.object(RabbitMQHook, "publish_sync")
@@ -224,13 +225,14 @@ class TestRabbitMQProducerOperator:
                 operator.execute(context)
 
         # Assertions
-        mock_hook_init.assert_called_once_with(conn_id=self.conn_id)
+        mock_hook_init.assert_called_once_with(
+            conn_id=self.conn_id, confirm=True, mandatory=False
+        )
         mock_publish_sync.assert_called_once_with(
             self.message,
             self.exchange,
             self.routing_key,
             properties=None,
-            **self.delivery,
         )
 
     @mock.patch.object(RabbitMQHook, "publish_batch_sync", return_value=2)
@@ -252,7 +254,6 @@ class TestRabbitMQProducerOperator:
             self.exchange,
             self.routing_key,
             properties={"delivery_mode": 2},
-            **self.delivery,
         )
 
     @mock.patch.object(RabbitMQHook, "publish_batch_async", new_callable=mock.AsyncMock)
@@ -273,34 +274,23 @@ class TestRabbitMQProducerOperator:
             self.exchange,
             self.routing_key,
             properties=None,
-            **self.delivery,
         )
 
-    @pytest.mark.parametrize("use_async", [False, True])
-    def test_execute_passes_delivery_options(self, use_async: bool) -> None:
-        """confirm and mandatory reach the hook on both paths"""
-        method = "publish_async" if use_async else "publish_sync"
-        operator = RabbitMQProducerOperator(
+    @mock.patch.object(RabbitMQHook, "publish_sync")
+    @mock.patch.object(RabbitMQHook, "__init__", return_value=None)
+    def test_execute_passes_delivery_options_to_hook(self, mock_hook_init, _) -> None:
+        """confirm and mandatory configure the hook the operator publishes with"""
+        RabbitMQProducerOperator(
             task_id=self.task_id,
             message=self.message,
             exchange=self.exchange,
             routing_key=self.routing_key,
-            use_async=use_async,
             mandatory=True,
+        ).execute({})
+
+        mock_hook_init.assert_called_once_with(
+            conn_id=self.conn_id, confirm=True, mandatory=True
         )
-
-        with (
-            mock.patch.object(RabbitMQHook, "__init__", return_value=None),
-            mock.patch.object(
-                RabbitMQHook,
-                method,
-                new_callable=mock.AsyncMock if use_async else mock.MagicMock,
-            ) as publish,
-        ):
-            operator.execute({})
-
-        assert publish.call_args.kwargs["confirm"] is True
-        assert publish.call_args.kwargs["mandatory"] is True
 
     def test_init_rejects_mandatory_without_confirm(self):
         """mandatory can't be honoured without confirms, so the DAG fails to parse"""

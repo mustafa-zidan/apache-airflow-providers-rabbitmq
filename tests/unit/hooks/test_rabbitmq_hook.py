@@ -46,6 +46,10 @@ class TestRabbitMQHook:
         """A hook configured with the test connection URI"""
         return RabbitMQHook(connection_uri=self.connection_uri)
 
+    def _hook(self, **delivery: bool) -> RabbitMQHook:
+        """A hook with the test connection URI and the given confirm/mandatory"""
+        return RabbitMQHook(connection_uri=self.connection_uri, **delivery)
+
     async def test_init(self):
         """Test hook initialization"""
         # Test with connection_uri
@@ -251,7 +255,7 @@ class TestRabbitMQHook:
             mock_connection
         )
 
-        self.hook.publish_sync("m", "ex", "key", confirm=False)
+        self._hook(confirm=False).publish_sync("m", "ex", "key")
 
         channel = mock_connection.channel.return_value
         channel.confirm_delivery.assert_not_called()
@@ -282,21 +286,19 @@ class TestRabbitMQHook:
         channel.basic_publish.side_effect = error([returned])
 
         with pytest.raises(MessageNotDeliveredError) as excinfo:
-            self.hook.publish_sync("m", "ex", "key", mandatory=True)
+            self._hook(mandatory=True).publish_sync("m", "ex", "key")
 
         assert excinfo.value.reason == reason
         assert (excinfo.value.exchange, excinfo.value.routing_key) == ("ex", "key")
         assert isinstance(excinfo.value.__cause__, error)
         assert channel.basic_publish.call_args.kwargs["mandatory"] is True
 
-    @mock.patch.object(RabbitMQHook, "get_sync_connection_cm")
-    def test_publish_sync_rejects_mandatory_without_confirm(
-        self, mock_get_sync_connection_cm: mock.MagicMock
-    ) -> None:
+    def test_init_rejects_mandatory_without_confirm(self) -> None:
         with pytest.raises(ValueError, match="mandatory=True requires confirm=True"):
-            self.hook.publish_sync("m", "ex", "key", confirm=False, mandatory=True)
+            self._hook(confirm=False, mandatory=True)
 
-        mock_get_sync_connection_cm.assert_not_called()
+    def test_init_delivery_defaults(self) -> None:
+        assert (self.hook.confirm, self.hook.mandatory) == (True, False)
 
     @mock.patch.object(RabbitMQHook, "get_sync_connection_cm")
     async def test_publish_sync_with_bytes_and_properties(
@@ -463,8 +465,8 @@ class TestRabbitMQHook:
     ) -> None:
         mock_channel = self._mock_async_connection(mock_get_async_connection)
 
-        await self.hook.publish_async("m", "", "q", confirm=False)
-        await self.hook.publish_async("m", "", "q", mandatory=True)
+        await self._hook(confirm=False).publish_async("m", "", "q")
+        await self._hook(mandatory=True).publish_async("m", "", "q")
 
         channel = mock_get_async_connection.return_value.channel
         assert channel.await_args_list == [
@@ -506,20 +508,11 @@ class TestRabbitMQHook:
         mock_channel.default_exchange.publish.side_effect = error
 
         with pytest.raises(MessageNotDeliveredError) as excinfo:
-            await self.hook.publish_async("m", "", "q", mandatory=True)
+            await self._hook(mandatory=True).publish_async("m", "", "q")
 
         assert excinfo.value.reason == reason
         assert excinfo.value.__cause__ is error
         mock_get_async_connection.return_value.close.assert_awaited_once()
-
-    @mock.patch.object(RabbitMQHook, "get_async_connection")
-    async def test_publish_async_rejects_mandatory_without_confirm(
-        self, mock_get_async_connection: mock.MagicMock
-    ) -> None:
-        with pytest.raises(ValueError, match="mandatory=True requires confirm=True"):
-            await self.hook.publish_async("m", "", "q", confirm=False, mandatory=True)
-
-        mock_get_async_connection.assert_not_called()
 
     @mock.patch.object(RabbitMQHook, "get_sync_connection_cm")
     def test_publish_batch_sync_uses_one_channel(

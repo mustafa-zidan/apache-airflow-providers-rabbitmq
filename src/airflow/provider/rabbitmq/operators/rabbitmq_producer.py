@@ -107,7 +107,9 @@ class RabbitMQProducerOperator(BaseOperator):
         :param context: Airflow's execution context dictionary.
         :return: Number of messages published.
         """
-        hook = RabbitMQHook(conn_id=self.conn_id)
+        hook = RabbitMQHook(
+            conn_id=self.conn_id, confirm=self.confirm, mandatory=self.mandatory
+        )
         message = self.message
         if isinstance(message, (str, bytes)):
             return self._publish_one(hook, message)
@@ -134,8 +136,6 @@ class RabbitMQProducerOperator(BaseOperator):
                         self.exchange,
                         self.routing_key,
                         properties=self.properties,
-                        confirm=self.confirm,
-                        mandatory=self.mandatory,
                     )
                 )
             else:
@@ -144,8 +144,6 @@ class RabbitMQProducerOperator(BaseOperator):
                     self.exchange,
                     self.routing_key,
                     properties=self.properties,
-                    confirm=self.confirm,
-                    mandatory=self.mandatory,
                 )
         except Exception as e:
             self.log.error("Failed to publish message to RabbitMQ: %s", str(e))
@@ -169,8 +167,6 @@ class RabbitMQProducerOperator(BaseOperator):
                         self.exchange,
                         self.routing_key,
                         properties=self.properties,
-                        confirm=self.confirm,
-                        mandatory=self.mandatory,
                     )
                 )
             else:
@@ -179,8 +175,6 @@ class RabbitMQProducerOperator(BaseOperator):
                     self.exchange,
                     self.routing_key,
                     properties=self.properties,
-                    confirm=self.confirm,
-                    mandatory=self.mandatory,
                 )
         except Exception as e:
             self.log.error("Failed to publish batch messages to RabbitMQ: %s", str(e))
