@@ -39,7 +39,7 @@ The `RabbitMQProducerOperator` is used to publish messages to a RabbitMQ exchang
 
 #### Parameters
 
-- `message`: The message to be sent, as `str` (UTF-8 encoded) or `bytes`. (Templated)
+- `message`: The message to be sent, as `str` (UTF-8 encoded) or `bytes`, or a list of messages, see [Batches](#batches). (Templated)
 - `exchange`: The name of the RabbitMQ exchange. (Templated)
 - `routing_key`: The routing key for the message. (Templated)
 - `conn_id`: (Optional) Airflow connection ID. Default is `rabbitmq_default`. To use a raw URI, set `connection_uri` in the connection's Extra field.
@@ -59,6 +59,43 @@ The `RabbitMQProducerOperator` is used to publish messages to a RabbitMQ exchang
 | `timestamp` | seconds since the epoch, or a `datetime` |
 
 Values may be strings, so `"{{ params.priority }}"` works. Both `use_async` paths take the same keys and units; the hook converts them for `pika` and `aio-pika`. A message survives a broker restart only with `delivery_mode: 2` on a durable queue.
+
+#### Batches
+
+When `message` is a list or tuple, the operator publishes every item in order over one connection and one channel, and returns the number of messages published (pushed to XCom). An item is a `str`, `bytes`, or a dict:
+
+```python
+{"body": ..., "routing_key": ..., "exchange": ..., "properties": {...}}
+```
+
+`body` (or `message`) is required. A missing or `None` `routing_key` or `exchange` falls back to the operator's value. Item `properties` are merged over the operator's `properties` key by key, so an item can set `priority` and keep the operator's `delivery_mode`; set a key to `None` to unset it for that item. `headers` is replaced, not merged.
+
+Every item is checked before connecting, so a bad item fails the task with nothing sent. An empty list publishes nothing, logs a warning, and succeeds with `0`.
+
+A template renders to a string unless the DAG sets `render_template_as_native_obj=True`. Without it, `"{{ ti.xcom_pull('extract') }}"` publishes one message whose body is `"['a', 'b']"`. Either set the flag on the DAG, or pass the list itself (for example from a `@task` return value) instead of a template.
+
+With `use_async=True` the batch is published sequentially on one channel, the same as the sync path.
+
+```python
+with DAG("fan_out", render_template_as_native_obj=True, ...):
+    RabbitMQProducerOperator(
+        task_id="publish_all",
+        message="{{ ti.xcom_pull('extract') }}",  # renders to a list
+        exchange="events",
+        routing_key="row",
+        properties={"delivery_mode": 2},
+    )
+
+    RabbitMQProducerOperator(
+        task_id="publish_by_type",
+        message=[
+            {"body": '{"id": 1}', "routing_key": "order"},
+            {"body": '{"id": 2}', "routing_key": "refund", "properties": {"priority": 9}},
+        ],
+        exchange="events",
+        routing_key="unknown",
+    )
+```
 
 #### Example
 

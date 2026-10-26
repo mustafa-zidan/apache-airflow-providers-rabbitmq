@@ -4,6 +4,7 @@
 
 ### Features
 - `RabbitMQProducerOperator` takes `properties`, a templated dict of AMQP basic properties (`content_type`, `headers`, `delivery_mode`, `priority`, `correlation_id`, `expiration`, ...). `publish_sync` and `publish_async` take the same argument and convert it for pika and aio-pika, so `expiration` is milliseconds on both paths. Unknown keys and invalid values raise `ValueError` before connecting. `message` also accepts `bytes` ([#11](https://github.com/mustafa-zidan/apache-airflow-providers-rabbitmq/issues/11)).
+- `RabbitMQProducerOperator` publishes a list of messages in order over one connection and channel, and returns how many it published. Items are `str`, `bytes`, or dicts with `body` and optional `routing_key`, `exchange` and `properties` overrides; item properties merge over the operator's. Every item is validated before connecting, and an empty list publishes nothing. `RabbitMQHook` has `publish_batch_sync` and `publish_batch_async` for the same ([#12](https://github.com/mustafa-zidan/apache-airflow-providers-rabbitmq/issues/12)).
 
 ### Bug Fixes
 - `RabbitMQTrigger` yields the return value of `apply_function` as the event payload, as Kafka's `AwaitMessageTrigger` does. A falsy return still skips the message, and `True` still yields the standard payload ([#27](https://github.com/mustafa-zidan/apache-airflow-providers-rabbitmq/issues/27)).
