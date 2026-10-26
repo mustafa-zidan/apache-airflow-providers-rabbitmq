@@ -15,7 +15,8 @@ spec:
       hostnames: [rabbitmq, postgres]
   containers:
     - name: rabbitmq
-      image: docker.io/library/rabbitmq:4-management
+      # Pinned: 4.4.0 hangs at boot importing users from definitions.json.
+      image: docker.io/library/rabbitmq:4.3.6-management
       ports:
         - containerPort: 5672
           hostPort: 5672

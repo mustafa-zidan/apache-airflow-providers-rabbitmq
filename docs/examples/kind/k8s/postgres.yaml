@@ -1,0 +1,37 @@
+# Airflow's metadata database. emptyDir: deleting the pod starts a fresh database.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: postgres
+spec:
+  selector:
+    matchLabels: { app: postgres }
+  template:
+    metadata:
+      labels: { app: postgres }
+    spec:
+      enableServiceLinks: false
+      containers:
+        - name: postgres
+          image: docker.io/library/postgres:17
+          env:
+            - { name: POSTGRES_USER, value: airflow }
+            - { name: POSTGRES_PASSWORD, value: airflow }
+            - { name: POSTGRES_DB, value: airflow }
+          readinessProbe:
+            exec: { command: [pg_isready, -U, airflow] }
+            periodSeconds: 5
+          volumeMounts:
+            - { name: data, mountPath: /var/lib/postgresql/data }
+      volumes:
+        - name: data
+          emptyDir: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: postgres
+spec:
+  selector: { app: postgres }
+  ports:
+    - { port: 5432 }

@@ -1,0 +1,17 @@
+# kind cluster for trying the provider. kind.sh fills in __REPO_DIR__: the checkout is
+# mounted into the node, so pods can mount the provider source and the DAGs from it.
+kind: Cluster
+apiVersion: kind.x-k8s.io/v1alpha4
+name: rabbitmq-provider
+nodes:
+  - role: control-plane
+    extraMounts:
+      - hostPath: __REPO_DIR__
+        containerPath: /provider
+        readOnly: true
+    # NodePorts in k8s/*.yaml, reachable on localhost
+    extraPortMappings:
+      - { containerPort: 30080, hostPort: 8080 }   # Airflow UI
+      - { containerPort: 31672, hostPort: 15672 }  # RabbitMQ management UI
+      - { containerPort: 30672, hostPort: 5672 }   # AMQP
+      - { containerPort: 30671, hostPort: 5671 }   # AMQPS (mutual TLS)

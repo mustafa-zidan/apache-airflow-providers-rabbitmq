@@ -1,0 +1,64 @@
+# RabbitMQ with a plain listener (5672) and a mutual TLS listener (5671) that
+# requires a client certificate signed by the generated CA.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: rabbitmq
+spec:
+  selector:
+    matchLabels: { app: rabbitmq }
+  template:
+    metadata:
+      labels: { app: rabbitmq }
+    spec:
+      # Service links would inject RABBITMQ_* variables, which RabbitMQ reads as config.
+      enableServiceLinks: false
+      containers:
+        - name: rabbitmq
+          # Pinned: 4.4.0 hangs at boot importing users from definitions.json.
+          image: docker.io/library/rabbitmq:4.3.6-management
+          ports:
+            - { name: amqp, containerPort: 5672 }
+            - { name: amqps, containerPort: 5671 }
+            - { name: management, containerPort: 15672 }
+          readinessProbe:
+            exec: { command: [rabbitmq-diagnostics, -q, check_port_connectivity] }
+            initialDelaySeconds: 10
+            periodSeconds: 10
+            timeoutSeconds: 10
+          volumeMounts:
+            - name: config
+              mountPath: /etc/rabbitmq/conf.d/90-provider.conf
+              subPath: rabbitmq.conf
+            - name: config
+              mountPath: /etc/rabbitmq/definitions.json
+              subPath: definitions.json
+            - { name: tls, mountPath: /etc/rabbitmq/certs, readOnly: true }
+      volumes:
+        - name: config
+          configMap: { name: rabbitmq-config }
+        - name: tls
+          secret: { secretName: rabbitmq-server-tls }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: rabbitmq
+spec:
+  type: NodePort
+  selector: { app: rabbitmq }
+  ports:
+    - { name: amqp, port: 5672, nodePort: 30672 }
+    - { name: amqps, port: 5671, nodePort: 30671 }
+    - { name: management, port: 15672, nodePort: 31672 }
+---
+# The same broker under a name the server certificate doesn't list, for trying
+# ssl_server_hostname.
+apiVersion: v1
+kind: Service
+metadata:
+  name: rabbitmq-alias
+spec:
+  selector: { app: rabbitmq }
+  ports:
+    - { name: amqps, port: 5671 }
