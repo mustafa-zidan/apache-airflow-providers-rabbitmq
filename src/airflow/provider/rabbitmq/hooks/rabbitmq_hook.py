@@ -81,7 +81,6 @@ class RabbitMQHook(BaseHook):
         self,
         connection_uri: Optional[str] = None,
         conn_id: str = default_conn_name,
-        *,
         confirm: bool = True,
         mandatory: bool = False,
     ) -> None:
