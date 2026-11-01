@@ -1,5 +1,10 @@
 # Apache Airflow Provider for RabbitMQ - Release Notes
 
+## Version 5.1.1 (2026-11-01)
+
+### Bug Fixes
+- Picked up the latest dependency releases, with no code changes. Runtime: `aio-pika` 10.2.1, `aiormq` 7.2.5, `pamqp` 5.0.0 and `dnspython` 2.9.0. The test suite passes against all of them.
+
 ## Version 5.1.0 (2026-10-26)
 
 ### Breaking Changes
