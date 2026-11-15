@@ -254,15 +254,30 @@ class TestRabbitMQSensor:
 
         assert sensor.execute_complete({}, payload) == payload
 
-    def test_deferrable_rejects_no_auto_ack(self) -> None:
-        """The trigger always acks, so peeking can't be deferred"""
-        with pytest.raises(ValueError, match="auto_ack"):
+    @pytest.mark.parametrize(
+        "options",
+        [{"auto_ack": False}, {"deserialize": "json"}, {"max_xcom_bytes": 10}],
+    )
+    def test_deferrable_rejects_options_the_trigger_cannot_honour(
+        self, options: Dict[str, Any]
+    ) -> None:
+        """The trigger always acks and builds the payload itself"""
+        with pytest.raises(ValueError, match="deferrable"):
             RabbitMQSensor(
                 task_id=self.task_id,
                 queue_name=self.queue,
-                auto_ack=False,
                 deferrable=True,
+                **options,
             )
+
+    def test_not_deferrable_polls(self, channel) -> None:
+        """Without deferrable, execute() polls and never defers"""
+        self._message(channel, b"polled")
+        sensor = RabbitMQSensor(
+            task_id=self.task_id, queue_name=self.queue, deferrable=False
+        )
+
+        assert sensor.execute({})["body"] == "polled"
 
     def test_init_rejects_unknown_deserialize(self) -> None:
         """An unknown deserialize value fails when the DAG is parsed"""

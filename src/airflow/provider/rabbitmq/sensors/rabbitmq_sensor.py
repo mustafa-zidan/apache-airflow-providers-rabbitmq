@@ -48,8 +48,9 @@ class RabbitMQSensor(BaseSensorOperator):  # pylint: disable=too-many-ancestors
         worker slot. Default is ``[operators] default_deferrable``. The trigger acks
         the message before the task resumes, so delivery is at-most-once: if the
         triggerer dies before the event is stored, or the resumed task fails, the
-        message is lost. It needs ``auto_ack=True`` and ignores ``deserialize`` and
-        ``max_xcom_bytes``. ``timeout`` still applies while deferred.
+        message is lost. It needs ``auto_ack=True`` and can't be combined with
+        ``deserialize`` or ``max_xcom_bytes``. ``timeout`` still applies while
+        deferred; ``mode``, ``poke_interval`` and ``soft_fail`` don't.
 
     ``queue`` is not the RabbitMQ queue: like on every operator, it is the executor
     queue the task runs on.
@@ -82,9 +83,10 @@ class RabbitMQSensor(BaseSensorOperator):  # pylint: disable=too-many-ancestors
         """
         super().__init__(**kwargs)
         check_deserialize(deserialize)
-        if deferrable and not auto_ack:
+        if deferrable and (not auto_ack or deserialize or max_xcom_bytes is not None):
             raise ValueError(
-                "deferrable=True needs auto_ack=True: the trigger always acks"
+                "deferrable=True can't be combined with auto_ack=False, deserialize "
+                "or max_xcom_bytes: the trigger always acks and builds the payload"
             )
         self.conn_id: str = conn_id
         self.queue_name: str = queue_name
@@ -95,15 +97,15 @@ class RabbitMQSensor(BaseSensorOperator):  # pylint: disable=too-many-ancestors
 
     def execute(self, context: Context) -> Any:
         """Poll, or defer to a RabbitMQTrigger when ``deferrable`` is set."""
-        if not self.deferrable:
-            return super().execute(context)
-        self.defer(
-            trigger=RabbitMQTrigger(
-                queue_name=self.queue_name, conn_id=self.conn_id, passive=True
-            ),
-            method_name="execute_complete",
-            timeout=timedelta(seconds=self.timeout),
-        )
+        if self.deferrable:
+            self.defer(
+                trigger=RabbitMQTrigger(
+                    queue_name=self.queue_name, conn_id=self.conn_id, passive=True
+                ),
+                method_name="execute_complete",
+                timeout=timedelta(seconds=self.timeout),
+            )
+        return super().execute(context)
 
     def execute_complete(
         self, context: Context, event: dict[str, Any]

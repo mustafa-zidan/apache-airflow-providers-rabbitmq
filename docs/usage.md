@@ -182,7 +182,7 @@ The `RabbitMQSensor` waits for a message to appear in a RabbitMQ queue and pushe
 - `auto_ack`: (Optional) Acknowledge the message, removing it from the queue. Default is `True`. With `False` the sensor peeks: it returns the message and requeues it.
 - `deserialize`: (Optional) `None` returns the body as a string, or `"json"` parses it. A body that isn't valid JSON fails the task and stays on the queue. Default is `None`.
 - `max_xcom_bytes`: (Optional) Fail the task, leaving the message on the queue, when the body is larger than this. Default is `None` (no limit).
-- `deferrable`: (Optional) Wait in the triggerer instead of polling, so the task holds no worker slot. Default is `[operators] default_deferrable`. The sensor defers to `RabbitMQTrigger` and returns the same XCom value. `timeout` still applies while deferred. It needs `auto_ack=True` and ignores `deserialize` and `max_xcom_bytes`.
+- `deferrable`: (Optional) Wait in the triggerer instead of polling, so the task holds no worker slot. Default is `[operators] default_deferrable`. The sensor defers to `RabbitMQTrigger` and returns the same XCom value. `timeout` still applies while deferred; `mode`, `poke_interval` and `soft_fail` don't. It can't be combined with `auto_ack=False`, `deserialize` or `max_xcom_bytes`: the trigger always acks and builds the payload.
 
 The trigger acks the message before the task resumes, so a deferred sensor is at-most-once: if the triggerer dies before the event is stored, or the resumed task fails, the message is lost.
 
