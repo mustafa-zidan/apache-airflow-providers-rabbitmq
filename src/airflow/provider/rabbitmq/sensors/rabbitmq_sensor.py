@@ -5,7 +5,6 @@ from __future__ import annotations
 from datetime import timedelta
 from typing import TYPE_CHECKING, Any, Optional, Sequence
 
-from airflow.configuration import conf
 from pika.adapters.blocking_connection import BlockingChannel
 from pika.exceptions import AMQPError
 from pika.spec import Basic, BasicProperties
@@ -45,7 +44,7 @@ class RabbitMQSensor(BaseSensorOperator):  # pylint: disable=too-many-ancestors
     :param max_xcom_bytes: Fail the task, leaving the message on the queue, when the
         body is larger than this. Default None, no limit.
     :param deferrable: Wait in the triggerer instead of polling, so the task holds no
-        worker slot. Default is ``[operators] default_deferrable``. The trigger acks
+        worker slot. Default is False. The trigger acks
         the message before the task resumes, so delivery is at-most-once: if the
         triggerer dies before the event is stored, or the resumed task fails, the
         message is lost. It needs ``auto_ack=True`` and can't be combined with
@@ -66,9 +65,7 @@ class RabbitMQSensor(BaseSensorOperator):  # pylint: disable=too-many-ancestors
         auto_ack: bool = True,
         deserialize: Optional[str] = None,
         max_xcom_bytes: Optional[int] = None,
-        deferrable: bool = conf.getboolean(
-            "operators", "default_deferrable", fallback=False
-        ),
+        deferrable: bool = False,
         **kwargs: Any,
     ) -> None:
         """
