@@ -84,7 +84,7 @@ class RabbitMQTrigger(BaseEventTrigger):
         apply_function_kwargs: Optional[dict[Any, Any]] = None,
         **kwargs: Any,
     ) -> None:
-        super().__init__(**kwargs)  # type: ignore[no-untyped-call]
+        super().__init__(**kwargs)
         unknown = sorted(set(kwargs) - set(KWARG_OPTIONS))
         if unknown:
             self.log.warning(
