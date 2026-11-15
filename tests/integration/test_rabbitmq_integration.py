@@ -8,6 +8,7 @@ from unittest import mock
 import aio_pika
 import pika
 import pytest
+from airflow.exceptions import TaskDeferred
 
 try:
     import docker
@@ -151,6 +152,31 @@ class TestRabbitMQIntegration:
         assert result.xcom_value["content_type"] == "application/json"
         assert result.xcom_value["message_id"] == "m-1"
         assert result.xcom_value["headers"] == {"source": "shop"}
+        assert self._get_message(self.queue) is None  # acked
+
+    async def test_deferrable_sensor_returns_trigger_event(self) -> None:
+        """The trigger the sensor defers to yields the message the sensor returns"""
+        sensor = RabbitMQSensor(
+            task_id=self.task_id,
+            conn_id=self.conn_id,
+            queue_name=self.queue,
+            deferrable=True,
+        )
+        with pytest.raises(TaskDeferred) as deferred:
+            sensor.execute({})
+        connection = pika.BlockingConnection(pika.URLParameters(self.connection_uri))
+        try:
+            connection.channel().basic_publish(
+                exchange="", routing_key=self.queue, body=b"deferred message"
+            )
+        finally:
+            connection.close()
+
+        events = [event async for event in deferred.value.trigger.run()]
+        result = sensor.execute_complete({}, events[0].payload)
+
+        assert result["body"] == "deferred message"
+        assert result["routing_key"] == self.queue
         assert self._get_message(self.queue) is None  # acked
 
     def test_sensor_without_auto_ack_leaves_message_on_queue(self) -> None:

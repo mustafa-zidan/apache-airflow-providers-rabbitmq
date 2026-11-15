@@ -2,15 +2,18 @@
 
 import importlib
 from contextlib import contextmanager
+from datetime import timedelta
 from typing import Any, Dict
 from unittest import mock
 
 import pytest
+from airflow.exceptions import TaskDeferred
 from pika.adapters.blocking_connection import BlockingChannel, BlockingConnection
 from pika.spec import Basic, BasicProperties
 
 from airflow.provider.rabbitmq.hooks.rabbitmq_hook import RabbitMQHook
 from airflow.provider.rabbitmq.sensors.rabbitmq_sensor import RabbitMQSensor
+from airflow.provider.rabbitmq.triggers.rabbitmq_trigger import RabbitMQTrigger
 
 try:
     from airflow.sdk.bases.sensor import (  # Airflow 3.x
@@ -220,6 +223,46 @@ class TestRabbitMQSensor:
             "Received a %d-byte message with routing key %r", 14, "new"
         )
         log.debug.assert_called_once_with("Message body: %r", b"secret payload")
+
+    def test_deferrable_execute_defers_to_trigger(self) -> None:
+        """execute() defers to a passive trigger and keeps the sensor timeout"""
+        sensor = RabbitMQSensor(
+            task_id=self.task_id,
+            queue_name=self.queue,
+            conn_id="test_conn",
+            deferrable=True,
+            timeout=60,
+        )
+
+        with pytest.raises(TaskDeferred) as deferred:
+            sensor.execute({})
+
+        trigger = deferred.value.trigger
+        assert isinstance(trigger, RabbitMQTrigger)
+        assert trigger.queue_name == self.queue
+        assert trigger.conn_id == "test_conn"
+        assert trigger.passive is True
+        assert deferred.value.method_name == "execute_complete"
+        assert deferred.value.timeout == timedelta(seconds=60)
+
+    def test_deferrable_execute_complete_returns_payload(self) -> None:
+        """The event payload is the XCom value"""
+        sensor = RabbitMQSensor(
+            task_id=self.task_id, queue_name=self.queue, deferrable=True
+        )
+        payload = {"body": "hello", "body_encoding": "utf-8"}
+
+        assert sensor.execute_complete({}, payload) == payload
+
+    def test_deferrable_rejects_no_auto_ack(self) -> None:
+        """The trigger always acks, so peeking can't be deferred"""
+        with pytest.raises(ValueError, match="auto_ack"):
+            RabbitMQSensor(
+                task_id=self.task_id,
+                queue_name=self.queue,
+                auto_ack=False,
+                deferrable=True,
+            )
 
     def test_init_rejects_unknown_deserialize(self) -> None:
         """An unknown deserialize value fails when the DAG is parsed"""
