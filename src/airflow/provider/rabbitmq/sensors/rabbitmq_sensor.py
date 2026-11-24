@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from datetime import timedelta
 from typing import TYPE_CHECKING, Any, Optional, Sequence, cast
 
 from pika.adapters.blocking_connection import BlockingChannel
@@ -14,6 +15,7 @@ from airflow.provider.rabbitmq.messages.incoming import (
     check_deserialize,
     message_payload,
 )
+from airflow.provider.rabbitmq.triggers.rabbitmq_trigger import RabbitMQTrigger
 
 if TYPE_CHECKING:
     from airflow.provider.rabbitmq._compat import Context
@@ -41,6 +43,13 @@ class RabbitMQSensor(BaseSensorOperator):  # pylint: disable=too-many-ancestors
         stays on the queue.
     :param max_xcom_bytes: Fail the task, leaving the message on the queue, when the
         body is larger than this. Default None, no limit.
+    :param deferrable: Wait in the triggerer instead of polling, so the task holds no
+        worker slot. Default is False. The trigger acks
+        the message before the task resumes, so delivery is at-most-once: if the
+        triggerer dies before the event is stored, or the resumed task fails, the
+        message is lost. It needs ``auto_ack=True`` and can't be combined with
+        ``deserialize`` or ``max_xcom_bytes``. ``timeout`` still applies while
+        deferred; ``mode``, ``poke_interval`` and ``soft_fail`` don't.
 
     ``queue`` is not the RabbitMQ queue: like on every operator, it is the executor
     queue the task runs on.
@@ -56,6 +65,7 @@ class RabbitMQSensor(BaseSensorOperator):  # pylint: disable=too-many-ancestors
         auto_ack: bool = True,
         deserialize: Optional[str] = None,
         max_xcom_bytes: Optional[int] = None,
+        deferrable: bool = False,
         **kwargs: Any,
     ) -> None:
         """
@@ -66,14 +76,39 @@ class RabbitMQSensor(BaseSensorOperator):  # pylint: disable=too-many-ancestors
         :param auto_ack: Acknowledge the message, or requeue it if False. Default is True.
         :param deserialize: None, or "json" to parse the body.
         :param max_xcom_bytes: Largest body to push to XCom. Default None, no limit.
+        :param deferrable: Wait in the triggerer instead of polling.
         """
         super().__init__(**kwargs)
         check_deserialize(deserialize)
+        if deferrable and (not auto_ack or deserialize or max_xcom_bytes is not None):
+            raise ValueError(
+                "deferrable=True can't be combined with auto_ack=False, deserialize "
+                "or max_xcom_bytes: the trigger always acks and builds the payload"
+            )
         self.conn_id: str = conn_id
         self.queue_name: str = queue_name
         self.auto_ack: bool = auto_ack
         self.deserialize: Optional[str] = deserialize
         self.max_xcom_bytes: Optional[int] = max_xcom_bytes
+        self.deferrable: bool = deferrable
+
+    def execute(self, context: Context) -> Any:
+        """Poll, or defer to a RabbitMQTrigger when ``deferrable`` is set."""
+        if self.deferrable:
+            self.defer(
+                trigger=RabbitMQTrigger(
+                    queue_name=self.queue_name, conn_id=self.conn_id, passive=True
+                ),
+                method_name="execute_complete",
+                timeout=timedelta(seconds=self.timeout),
+            )
+        return super().execute(context)
+
+    def execute_complete(
+        self, context: Context, event: dict[str, Any]
+    ) -> dict[str, Any]:
+        """Return the trigger's payload, the same dict a poked sensor pushes to XCom."""
+        return event
 
     def poke(self, _context: Context) -> bool | PokeReturnValue:
         """
