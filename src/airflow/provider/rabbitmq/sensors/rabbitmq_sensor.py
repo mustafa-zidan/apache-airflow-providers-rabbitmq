@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any, Optional, Sequence
+from typing import TYPE_CHECKING, Any, Optional, Sequence, cast
 
 from pika.adapters.blocking_connection import BlockingChannel
 from pika.exceptions import AMQPError
@@ -96,11 +96,16 @@ class RabbitMQSensor(BaseSensorOperator):  # pylint: disable=too-many-ancestors
                 )
                 if not method_frame:
                     return False
+                # A GetOk always has properties and a delivery tag; an empty body
+                # comes back as None.
+                properties = cast(BasicProperties, properties)
+                delivery_tag = cast(int, method_frame.delivery_tag)
+                body = body or b""
 
                 try:
                     payload = self._to_payload(method_frame, properties, body)
                 except Exception:
-                    channel.basic_nack(method_frame.delivery_tag, requeue=True)
+                    channel.basic_nack(delivery_tag, requeue=True)
                     raise
 
                 # Payloads can be large or hold personal data: body at DEBUG only.
@@ -112,9 +117,9 @@ class RabbitMQSensor(BaseSensorOperator):  # pylint: disable=too-many-ancestors
                 self.log.debug("Message body: %r", body)
 
                 if self.auto_ack:
-                    channel.basic_ack(method_frame.delivery_tag)
+                    channel.basic_ack(delivery_tag)
                 else:
-                    channel.basic_nack(method_frame.delivery_tag, requeue=True)
+                    channel.basic_nack(delivery_tag, requeue=True)
                 return PokeReturnValue(is_done=True, xcom_value=payload)
 
         except (ConnectionError, AMQPError) as e:
@@ -133,12 +138,19 @@ class RabbitMQSensor(BaseSensorOperator):  # pylint: disable=too-many-ancestors
             )
         return message_payload(
             body,
-            exchange=method_frame.exchange,
-            routing_key=method_frame.routing_key,
+            exchange=_text(method_frame.exchange),
+            routing_key=_text(method_frame.routing_key),
             redelivered=method_frame.redelivered,
-            content_type=properties.content_type,
-            message_id=properties.message_id,
-            correlation_id=properties.correlation_id,
+            content_type=_text(properties.content_type),
+            message_id=_text(properties.message_id),
+            correlation_id=_text(properties.correlation_id),
             headers=properties.headers,
             deserialize=self.deserialize,
         )
+
+
+def _text(value: str | bytes | None) -> Optional[str]:
+    """pika returns a short string as bytes when it isn't valid UTF-8."""
+    if isinstance(value, bytes):
+        return value.decode("utf-8", "replace")
+    return value
